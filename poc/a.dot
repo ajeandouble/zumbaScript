@@ -1,0 +1,217 @@
+tok = function
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+tok = function
+tok = return
+tok = if
+tok = else
+digraph astgraph {
+  node [shape=circle, fontsize=12, fontname="Courier", height=.1];
+  ranksep=.3;
+  edge [arrowsize=.5]
+
+  node1 [label="Program"]
+  node2 [label="Function g
+args= []"]
+  node3 [label="NoOp"]
+  node2 -> node3
+  node1 -> node2
+  node4 [label="Function f
+args= ['a']"]
+  node5 [label="="]
+  node6 [label="a"]
+  node7 [label="+"]
+  node8 [label="42"]
+  node9 [label="/"]
+  node10 [label="/"]
+  node11 [label="a"]
+  node12 [label="5"]
+  node10 -> node11
+  node10 -> node12
+  node13 [label="Call: g"]
+  node9 -> node10
+  node9 -> node13
+  node7 -> node8
+  node7 -> node9
+  node5 -> node6
+  node5 -> node7
+  node4 -> node5
+  node14 [label="Return"]
+  node15 [label="a"]
+  node14 -> node15
+  node4 -> node14
+  node16 [label="NoOp"]
+  node4 -> node16
+  node1 -> node4
+  node17 [label="Function main
+args= []"]
+  node18 [label="="]
+  node19 [label="a"]
+  node20 [label="'test'"]
+  node18 -> node19
+  node18 -> node20
+  node17 -> node18
+  node21 [label="Call: f"]
+  node22 [label="42"]
+  node21 -> node22
+  node17 -> node21
+  node23 [label="NoOp"]
+  node17 -> node23
+  node1 -> node17
+  node24 [label="NoOp"]
+  node1 -> node24
+}

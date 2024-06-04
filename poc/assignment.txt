@@ -1,0 +1,12 @@
+function g() {
+}
+
+function f(a) {
+	a = 42 + a / 5 / g();
+	return a;
+}
+
+function main() {
+	a = "test";
+	f(42);
+}
