@@ -8,7 +8,7 @@ const res_kw = @import("./lex_constants.zig");
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
 
-const Error = error{ ParsingError, BadToken, UnexpectedEndOfInput, MissingSemiColumn, NullTokens, NullLexeme, UnexpectedNodeType };
+const Error = error{ ParsingError, BadToken, UnexpectedEndOfInput, MissingSemiColumn, NullTokens, NullLexeme, UnexpectedNodeType, InvalidElseStatement };
 
 pub const Parser = struct {
     const Self = @This();
@@ -256,16 +256,59 @@ pub const Parser = struct {
         return try self.makeNode(Node{ .ret = ret });
     }
 
+    pub fn parseElseBlocks(self: *Self) !(?*AstNode.ElseBlock) {
+        dbg.print("\n", .{}, @src());
+        var token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        var curr_else = try AstNode.ElseBlock.make(.{ .next_else = null }, self.arena.allocator());
+        const dummy = curr_else;
+        var lonely_else: usize = 0;
+        while (token.type == TokenType.else_kw) {
+            const saved_token = token;
+            try self.eat(TokenType.else_kw);
+            var else_if_expr: *Node = undefined;
+            token = try self.current() orelse return Error.UnexpectedEndOfInput;
+            if (token.type == TokenType.if_kw) {
+                if (lonely_else > 0) {
+                    return Error.InvalidElseStatement;
+                }
+
+                try self.eat(TokenType.if_kw);
+                try self.eat(TokenType.lparen);
+                else_if_expr = try self.parseExpr();
+                try self.eat(TokenType.rparen);
+            } else {
+                lonely_else += 1;
+                if (lonely_else >= 2) {
+                    // Only one else {} is allowed duh!
+                    return Error.InvalidElseStatement;
+                }
+            }
+            const else_stmts = try self.parseCompoundStatement();
+            token = try self.current() orelse return Error.UnexpectedEndOfInput;
+            curr_else.next_else = try AstNode.ElseBlock.make(AstNode.ElseBlock{ .condition = else_if_expr, .statements = else_stmts, .token = saved_token, .next_else = null }, self.arena.allocator());
+            curr_else = curr_else.next_else.?;
+            dbg.print("{}\n", .{token.type}, @src());
+        }
+        return dummy.next_else;
+    }
+
     pub fn parseIfBlock(self: *Self) anyerror!*Node {
-        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        var token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         try self.eat(TokenType.if_kw);
         try self.eat(TokenType.lparen);
         const expr = try self.parseExpr();
         try self.eat(TokenType.rparen);
         const statements = try self.parseCompoundStatement();
-        const if_block = try AstNode.IfBlock.make(AstNode.IfBlock{ .expr = expr, .statements = statements, .token = token }, self.arena.allocator());
-        return self.makeNode(Node{ .if_block = if_block });
+        const if_block = try AstNode.IfBlock.make(AstNode.IfBlock{ .condition = expr, .statements = statements, .token = token }, self.arena.allocator());
+        const ifBlock = try self.makeNode(Node{ .if_block = if_block });
+        token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("\t\t\t\t\t\tttype={}\t\t\t\n", .{token.type}, @src());
+        if (token.type == TokenType.else_kw) {
+            ifBlock.if_block.next_else = try self.parseElseBlocks();
+            dbg.print("{}\n", .{ifBlock.if_block.next_else.?.token.type}, @src());
+        }
+        return ifBlock;
     }
 
     pub fn parseStatement(self: *Self) anyerror!*Node {

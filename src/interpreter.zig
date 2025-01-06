@@ -156,7 +156,7 @@ pub const Interpreter = struct {
 
     fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
         dbg.print("", .{}, @src());
-        const expr_result = try self.visit(if_block.expr);
+        const expr_result = try self.visit(if_block.condition);
         var condition: bool = undefined;
         switch (expr_result.value) {
             .integer => condition = expr_result.value.integer != 0,
