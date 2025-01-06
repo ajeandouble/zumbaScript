@@ -472,6 +472,14 @@ fn isProgram(node: *const Node) bool {
     };
 }
 
+fn isIfBlock(node: *const Node) bool {
+    return (node.* == .if_block);
+    // return switch (node.*) {
+    //     .if_block => true,
+    //     else => false,
+    // };
+}
+
 test "parser init and cleanup" {
     var tokens = [_]Token{
         Token{ .type = TokenType.integer, .lexeme = "41", .line = 0, .allocator = undefined },
@@ -869,4 +877,47 @@ test "parseProgram - main, func and global statements" {
     const func_main = program.functions.items[0].*.func_decl;
     try std.testing.expectEqualStrings(func_main.id, "main");
     try std.testing.expectEqual(func_main.statements.items.len, 0);
+}
+
+test "parseProgram - main, if block with statement" {
+    var tokens = [_]Token{
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.if_kw, .lexeme = "if", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "0", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.global_statements.items.len, 0);
+
+    const func_main = program.functions.items[0].*.func_decl;
+    try std.testing.expectEqualStrings(func_main.id, "main");
+    try std.testing.expectEqual(func_main.statements.items.len, 1);
+
+    const if_stmt = func_main.statements.items[0];
+    try std.testing.expect(isIfBlock(if_stmt));
+    try std.testing.expectEqualStrings("if", if_stmt.if_block.token.lexeme.?);
+    const if_expr = if_stmt.if_block.expr;
+    try std.testing.expect(isNum(if_expr));
+    const if_condition = if_expr.num;
+    try std.testing.expectEqual(42, if_condition.value);
+
+    try std.testing.expectEqual(1, if_stmt.if_block.statements.items.len);
+    const if_block_stmt = if_stmt.if_block.statements.items[0];
+    try std.testing.expect(isNum(if_block_stmt));
+    try std.testing.expectEqual(0, if_block_stmt.num.value);
 }
