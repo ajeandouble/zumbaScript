@@ -52,7 +52,7 @@ variable: ID
   - [x] Parse function declarations in global scope
   - [x] Parse control flow
     - [x] If block
-    - [ ] Else block
+    - [X] Else block
     - [ ] While block
   - [ ] Floats
   - [ ] Arrays subscripting
