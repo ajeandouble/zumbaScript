@@ -114,7 +114,7 @@ pub const IfBlock = struct {
     token: Token = undefined,
     condition: *const Node = undefined,
     statements: std.ArrayList(*Node) = undefined,
-    next_else: ?*ElseBlock = undefined,
+    next_else: ?*ElseBlock = null,
 
     pub fn make(if_block: Self, allocator: std.mem.Allocator) anyerror!*Self {
         const instance = try allocator.create(Self);

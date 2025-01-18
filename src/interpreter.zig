@@ -15,7 +15,7 @@ const Token = @import("./tokens.zig").Token;
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression };
 
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
@@ -155,7 +155,7 @@ pub const Interpreter = struct {
     }
 
     fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
-        dbg.print("", .{}, @src());
+        dbg.print("\n", .{}, @src());
         const expr_result = try self.visit(if_block.condition);
         var condition: bool = undefined;
         switch (expr_result.value) {
@@ -163,7 +163,26 @@ pub const Interpreter = struct {
             else => return Error.InvalidIfBlockExpression,
         }
         if (condition) {
+            dbg.print("else or no else\n", .{}, @src());
             return self.visitCompoundStatement(if_block.statements);
+        } else {
+            var curr_next_else = if_block.next_else orelse return Result{ .value = .{ .void = {} } };
+            while (true) {
+                const else_condition = curr_next_else.condition;
+                condition = true;
+                if (else_condition) |else_cond| {
+                    const else_expr_result = try self.visit(else_cond);
+                    switch (else_expr_result.value) {
+                        .integer => condition = else_expr_result.value.integer != 0,
+                        else => return Error.InvalidIfBlockExpression,
+                    }
+                }
+                if (condition) {
+                    dbg.print("else or no else\n", .{}, @src());
+                    return self.visitCompoundStatement(curr_next_else.statements);
+                }
+                curr_next_else = curr_next_else.next_else orelse return Result{ .value = .{ .void = {} } };
+            }
         }
         return Result{ .value = .{ .void = {} } };
     }
