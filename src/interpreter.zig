@@ -10,12 +10,13 @@ const Num = @import("./ast_nodes.zig").Num;
 const Variable = @import("./ast_nodes.zig").Variable;
 const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
 const IfBlock = @import("./ast_nodes.zig").IfBlock;
+const WhileBlock = @import("./ast_nodes.zig").WhileBlock;
 const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression };
 
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
@@ -187,6 +188,30 @@ pub const Interpreter = struct {
         return Result{ .value = .{ .void = {} } };
     }
 
+    fn visitWhileBlock(self: *Self, while_block: *const WhileBlock) !Result {
+        dbg.print("\n", .{}, @src());
+        var expr_result = try self.visit(while_block.condition);
+        var condition: bool = undefined;
+        if (expr_result.value == .integer) {
+            condition = expr_result.value.integer != 0;
+        } else {
+            return Error.InvalidWhileBlockExpression;
+        }
+        while (condition) {
+            _ = try self.visitCompoundStatement(while_block.statements);
+            if (self.return_val != null) {
+                break;
+            }
+            expr_result = try self.visit(while_block.condition);
+            if (expr_result.value == .integer) {
+                condition = expr_result.value.integer != 0;
+            } else {
+                return Error.InvalidWhileBlockExpression;
+            }
+        }
+        return Result{ .value = .{ .void = {} } };
+    }
+
     fn visit(self: *Self, node: *const Node) anyerror!Result {
         dbg.printNodeUnion(node, @src());
         switch (node.*) {
@@ -196,11 +221,10 @@ pub const Interpreter = struct {
             .unaryop => return try self.visitUnaryOp(node.*.unaryop),
             .variable => return try self.visitVariable(node.*.variable),
             .func_call => return try self.visitFuncCall(node.*.func_call),
-            .if_block => {
-                return try self.visitIfBlock(node.*.if_block);
-            },
+            .if_block => return try self.visitIfBlock(node.*.if_block),
+            .while_block => return try self.visitWhileBlock(node.*.while_block),
             else => {
-                return NotImplented;
+                return Error.InterpretError;
             },
         }
     }

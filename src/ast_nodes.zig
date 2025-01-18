@@ -137,4 +137,17 @@ pub const ElseBlock = struct {
     }
 };
 
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock, else_block: *ElseBlock };
+pub const WhileBlock = struct {
+    const Self = @This();
+    token: Token = undefined,
+    condition: *const Node = undefined,
+    statements: std.ArrayList(*Node) = undefined,
+
+    pub fn make(while_block: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = while_block;
+        return instance;
+    }
+};
+
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock, else_block: *ElseBlock, while_block: *WhileBlock };

@@ -260,27 +260,26 @@ pub const Parser = struct {
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
         var curr_else = try AstNode.ElseBlock.make(.{ .next_else = null }, self.arena.allocator());
         const dummy = curr_else;
-        var lonely_else: usize = 0;
+        var lonely_else = false;
         while (token.type == TokenType.else_kw) {
             const saved_token = token;
             try self.eat(TokenType.else_kw);
             var else_if_expr: ?*Node = null; // Initialize to null instead of undefined
             token = try self.current() orelse return Error.UnexpectedEndOfInput;
             if (token.type == TokenType.if_kw) {
-                if (lonely_else > 0) {
+                if (lonely_else) {
                     return Error.InvalidElseStatement;
                 }
-
                 try self.eat(TokenType.if_kw);
                 try self.eat(TokenType.lparen);
                 else_if_expr = try self.parseExpr();
                 try self.eat(TokenType.rparen);
             } else {
-                lonely_else += 1;
-                if (lonely_else >= 2) {
+                if (lonely_else) {
                     // Only one else {} is allowed duh!
                     return Error.InvalidElseStatement;
                 }
+                lonely_else = true;
             }
             const else_stmts = try self.parseCompoundStatement();
             token = try self.current() orelse return Error.UnexpectedEndOfInput;
@@ -315,6 +314,20 @@ pub const Parser = struct {
         return ifBlock;
     }
 
+    pub fn parseWhileBlock(self: *Self) anyerror!*Node {
+        var token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        try self.eat(TokenType.while_kw);
+        try self.eat(TokenType.lparen);
+        const expr = try self.parseExpr();
+        try self.eat(TokenType.rparen);
+        const statements = try self.parseCompoundStatement();
+        const while_block = try AstNode.WhileBlock.make(AstNode.WhileBlock{ .condition = expr, .statements = statements, .token = token }, self.arena.allocator());
+        const whileBlock = try self.makeNode(Node{ .while_block = while_block });
+        token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        return whileBlock;
+    }
+
     pub fn parseStatement(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
@@ -339,12 +352,9 @@ pub const Parser = struct {
                     },
                 }
             },
-            .if_kw => {
-                return self.parseIfBlock();
-            },
-            .return_kw => {
-                return self.parseReturnStatement();
-            },
+            .if_kw => return self.parseIfBlock(),
+            .while_kw => return self.parseWhileBlock(),
+            .return_kw => return self.parseReturnStatement(),
             else => {
                 return Error.BadToken;
             },
@@ -521,10 +531,10 @@ fn isProgram(node: *const Node) bool {
 
 fn isIfBlock(node: *const Node) bool {
     return (node.* == .if_block);
-    // return switch (node.*) {
-    //     .if_block => true,
-    //     else => false,
-    // };
+}
+
+fn isElseBlock(node: *const Node) bool {
+    return (node.* == .else_block);
 }
 
 test "parser init and cleanup" {
@@ -958,10 +968,10 @@ test "parseProgram - main, if block with statement" {
     const if_stmt = func_main.statements.items[0];
     try std.testing.expect(isIfBlock(if_stmt));
     try std.testing.expectEqualStrings("if", if_stmt.if_block.token.lexeme.?);
-    const if_expr = if_stmt.if_block.expr;
-    try std.testing.expect(isNum(if_expr));
-    const if_condition = if_expr.num;
-    try std.testing.expectEqual(42, if_condition.value);
+    const if_cond_expr = if_stmt.if_block.condition;
+    try std.testing.expect(isNum(if_cond_expr));
+    const n = if_cond_expr.num;
+    try std.testing.expectEqual(42, n.value);
 
     try std.testing.expectEqual(1, if_stmt.if_block.statements.items.len);
     const if_block_stmt = if_stmt.if_block.statements.items[0];
@@ -1032,11 +1042,171 @@ test "parseProgram - main, if block with statement and else block" {
     try std.testing.expect(else_block.condition == null);
 
     // // Test else block statements
-    // try std.testing.expectEqual(1, else_block.statements.items.len);
-    // const else_block_stmt = else_block.statements.items[0];
-    // try std.testing.expect(isNum(else_block_stmt));
-    // try std.testing.expectEqual(1, else_block_stmt.num.value);
+    try std.testing.expectEqual(1, else_block.statements.items.len);
+    const else_block_stmt = else_block.statements.items[0];
+    try std.testing.expect(isNum(else_block_stmt));
+    try std.testing.expectEqual(1, else_block_stmt.num.value);
 
-    // // Test that there are no more else blocks
-    // try std.testing.expect(else_block.next_else == null);
+    // Test that there are no more else blocks
+    try std.testing.expect(else_block.next_else == null);
+}
+
+test "parseProgram - main, if block with statement and else if block" {
+    var tokens = [_]Token{
+        // `function main ( ) {`
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+
+        // `if ( 0 ) { 42 ; }`
+        Token{ .type = TokenType.if_kw, .lexeme = "if", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "0", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        // `else if ( 1 ) { 42 ; }`
+        Token{ .type = TokenType.else_kw, .lexeme = "else", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.if_kw, .lexeme = "if", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "1", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        // "}"
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.global_statements.items.len, 0);
+
+    const func_main = program.functions.items[0].*.func_decl;
+    try std.testing.expectEqualStrings(func_main.id, "main");
+    try std.testing.expectEqual(func_main.statements.items.len, 1);
+
+    const if_stmt = func_main.statements.items[0];
+    try std.testing.expect(isIfBlock(if_stmt));
+    try std.testing.expectEqualStrings("if", if_stmt.if_block.token.lexeme.?);
+
+    // Test if condition
+    const if_condition = if_stmt.if_block.condition;
+    try std.testing.expect(isNum(if_condition));
+    try std.testing.expectEqual(0, if_condition.num.value);
+
+    // Test if block statements
+    try std.testing.expectEqual(1, if_stmt.if_block.statements.items.len);
+    const if_block_stmt = if_stmt.if_block.statements.items[0];
+    try std.testing.expect(isNum(if_block_stmt));
+    try std.testing.expectEqual(42, if_block_stmt.num.value);
+
+    // Test else if block exists
+    try std.testing.expect(if_stmt.if_block.next_else != null);
+    const else_block = if_stmt.if_block.next_else.?;
+
+    // Test else block condition
+    try std.testing.expect(else_block.condition != null);
+    try std.testing.expect(isNum(else_block.condition.?));
+    const else_if_block_expr_stmt = else_block.condition.?.num;
+    try std.testing.expectEqual(1, else_if_block_expr_stmt.value);
+
+    // Test else block statements
+    try std.testing.expectEqual(1, else_block.statements.items.len);
+    const else_block_stmt = else_block.statements.items[0];
+    try std.testing.expect(isNum(else_block_stmt));
+    try std.testing.expectEqual(42, else_block_stmt.num.value);
+
+    // Test that there are no more else blocks
+    try std.testing.expect(else_block.next_else == null);
+}
+
+test "parseProgram - main, if block with statement, else if block and else block" {
+    var tokens = [_]Token{
+        // `function main ( ) {`
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+
+        // `if ( 0 ) { 42 ; }`
+        Token{ .type = TokenType.if_kw, .lexeme = "if", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "0", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        // `else if ( 1 ) {  }`
+        Token{ .type = TokenType.else_kw, .lexeme = "else", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.if_kw, .lexeme = "if", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "1", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        // `else { }`
+        Token{ .type = TokenType.else_kw, .lexeme = "else", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        // `}`
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.global_statements.items.len, 0);
+
+    const func_main = program.functions.items[0].*.func_decl;
+    try std.testing.expectEqualStrings(func_main.id, "main");
+    try std.testing.expectEqual(func_main.statements.items.len, 1);
+
+    const if_stmt = func_main.statements.items[0];
+    try std.testing.expect(isIfBlock(if_stmt));
+    try std.testing.expectEqualStrings("if", if_stmt.if_block.token.lexeme.?);
+
+    // Test if condition
+    const if_condition = if_stmt.if_block.condition;
+    try std.testing.expect(isNum(if_condition));
+    try std.testing.expectEqual(0, if_condition.num.value);
+
+    // Test NO if block statements
+    try std.testing.expectEqual(0, if_stmt.if_block.statements.items.len);
+
+    // Test else if block exists
+    try std.testing.expect(if_stmt.if_block.next_else != null);
+    const else_block = if_stmt.if_block.next_else.?;
+
+    // Test else if block condition
+    try std.testing.expect(else_block.condition != null);
+    try std.testing.expect(isNum(else_block.condition.?));
+    const else_if_block_expr_stmt = else_block.condition.?.num;
+    try std.testing.expectEqual(1, else_if_block_expr_stmt.value);
+
+    // // Test NO else if block statements
+    try std.testing.expectEqual(0, else_block.statements.items.len);
+
+    // Test last else block
+    try std.testing.expect(else_block.next_else != null);
+    const next_else = else_block.next_else.?;
+    try std.testing.expectEqual(0, next_else.statements.items.len);
+    try std.testing.expectEqual(null, next_else.condition);
 }
