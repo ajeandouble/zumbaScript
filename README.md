@@ -53,7 +53,8 @@ variable: ID
   - [x] Parse control flow
     - [x] If block
     - [x] Else block
-    - [ ] While block
+    - [x] While block
+      - [ ] Break statement
   - [ ] Floats
   - [ ] Arrays subscripting
   - [ ] Strings subscripting
@@ -67,7 +68,8 @@ variable: ID
   - [x] Control flow
     - [x] If block
     - [x] Else block
-    - [ ] While block
+    - [x] While block
+      - [ ] Break statement
 
 ## Resources
 
