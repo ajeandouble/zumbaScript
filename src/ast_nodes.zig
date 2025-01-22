@@ -112,8 +112,9 @@ pub const Return = struct {
 pub const IfBlock = struct {
     const Self = @This();
     token: Token = undefined,
-    expr: *const Node = undefined,
+    condition: *const Node = undefined,
     statements: std.ArrayList(*Node) = undefined,
+    next_else: ?*ElseBlock = null,
 
     pub fn make(if_block: Self, allocator: std.mem.Allocator) anyerror!*Self {
         const instance = try allocator.create(Self);
@@ -122,4 +123,31 @@ pub const IfBlock = struct {
     }
 };
 
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock };
+pub const ElseBlock = struct {
+    const Self = @This();
+    token: Token = undefined,
+    condition: ?*const Node = undefined,
+    statements: std.ArrayList(*Node) = undefined,
+    next_else: ?*Self = undefined,
+
+    pub fn make(else_block: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = else_block;
+        return instance;
+    }
+};
+
+pub const WhileBlock = struct {
+    const Self = @This();
+    token: Token = undefined,
+    condition: *const Node = undefined,
+    statements: std.ArrayList(*Node) = undefined,
+
+    pub fn make(while_block: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = while_block;
+        return instance;
+    }
+};
+
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock, else_block: *ElseBlock, while_block: *WhileBlock };

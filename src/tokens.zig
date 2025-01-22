@@ -3,6 +3,8 @@ const std = @import("std");
 const Error = error{NullLexeme};
 
 pub const TokenType = enum {
+    __dummy__, // Debug only!
+
     // Reserved keywords
     function_kw,
     return_kw,

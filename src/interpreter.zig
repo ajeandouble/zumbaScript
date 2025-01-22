@@ -10,12 +10,13 @@ const Num = @import("./ast_nodes.zig").Num;
 const Variable = @import("./ast_nodes.zig").Variable;
 const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
 const IfBlock = @import("./ast_nodes.zig").IfBlock;
+const WhileBlock = @import("./ast_nodes.zig").WhileBlock;
 const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression };
 
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
@@ -155,15 +156,58 @@ pub const Interpreter = struct {
     }
 
     fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
-        dbg.print("", .{}, @src());
-        const expr_result = try self.visit(if_block.expr);
+        dbg.print("\n", .{}, @src());
+        const expr_result = try self.visit(if_block.condition);
         var condition: bool = undefined;
         switch (expr_result.value) {
             .integer => condition = expr_result.value.integer != 0,
             else => return Error.InvalidIfBlockExpression,
         }
         if (condition) {
+            dbg.print("else or no else\n", .{}, @src());
             return self.visitCompoundStatement(if_block.statements);
+        } else {
+            var curr_next_else = if_block.next_else orelse return Result{ .value = .{ .void = {} } };
+            while (true) {
+                const else_condition = curr_next_else.condition;
+                condition = true;
+                if (else_condition) |else_cond| {
+                    const else_expr_result = try self.visit(else_cond);
+                    switch (else_expr_result.value) {
+                        .integer => condition = else_expr_result.value.integer != 0,
+                        else => return Error.InvalidIfBlockExpression,
+                    }
+                }
+                if (condition) {
+                    dbg.print("else or no else\n", .{}, @src());
+                    return self.visitCompoundStatement(curr_next_else.statements);
+                }
+                curr_next_else = curr_next_else.next_else orelse return Result{ .value = .{ .void = {} } };
+            }
+        }
+        return Result{ .value = .{ .void = {} } };
+    }
+
+    fn visitWhileBlock(self: *Self, while_block: *const WhileBlock) !Result {
+        dbg.print("\n", .{}, @src());
+        var expr_result = try self.visit(while_block.condition);
+        var condition: bool = undefined;
+        if (expr_result.value == .integer) {
+            condition = expr_result.value.integer != 0;
+        } else {
+            return Error.InvalidWhileBlockExpression;
+        }
+        while (condition) {
+            _ = try self.visitCompoundStatement(while_block.statements);
+            if (self.return_val != null) {
+                break;
+            }
+            expr_result = try self.visit(while_block.condition);
+            if (expr_result.value == .integer) {
+                condition = expr_result.value.integer != 0;
+            } else {
+                return Error.InvalidWhileBlockExpression;
+            }
         }
         return Result{ .value = .{ .void = {} } };
     }
@@ -177,11 +221,10 @@ pub const Interpreter = struct {
             .unaryop => return try self.visitUnaryOp(node.*.unaryop),
             .variable => return try self.visitVariable(node.*.variable),
             .func_call => return try self.visitFuncCall(node.*.func_call),
-            .if_block => {
-                return try self.visitIfBlock(node.*.if_block);
-            },
+            .if_block => return try self.visitIfBlock(node.*.if_block),
+            .while_block => return try self.visitWhileBlock(node.*.while_block),
             else => {
-                return NotImplented;
+                return Error.InterpretError;
             },
         }
     }
@@ -196,25 +239,25 @@ pub const Interpreter = struct {
         const lhs_val = lhs_result.value.integer;
         const rhs_val = rhs_result.value.integer;
         dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
-        var new_val: i64 = undefined;
+        var computed: i64 = undefined;
         switch (binop.token.type) {
-            TokenType.plus => new_val = lhs_result.value.integer + rhs_result.value.integer,
-            TokenType.minus => new_val = lhs_result.value.integer - rhs_result.value.integer,
-            TokenType.mul => new_val = lhs_result.value.integer * rhs_result.value.integer,
-            TokenType.div => new_val = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
-            TokenType.mod => new_val = @mod(lhs_result.value.integer, rhs_result.value.integer),
+            TokenType.plus => computed = lhs_result.value.integer + rhs_result.value.integer,
+            TokenType.minus => computed = lhs_result.value.integer - rhs_result.value.integer,
+            TokenType.mul => computed = lhs_result.value.integer * rhs_result.value.integer,
+            TokenType.div => computed = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
+            TokenType.mod => computed = @mod(lhs_result.value.integer, rhs_result.value.integer),
 
-            TokenType.lt => new_val = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
-            TokenType.le => new_val = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
-            TokenType.eq => new_val = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
-            TokenType.ge => new_val = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
-            TokenType.gt => new_val = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
+            TokenType.lt => computed = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
+            TokenType.le => computed = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
+            TokenType.eq => computed = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
+            TokenType.ge => computed = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
+            TokenType.gt => computed = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
 
             else => return NotImplented,
         }
         _ = self;
-        dbg.print("new_val == {}\n", .{new_val}, @src());
-        return new_val;
+        dbg.print("new_val == {}\n", .{computed}, @src());
+        return computed;
     }
 
     fn visitAssignment(self: *Self, binop: *const BinOp) !Result {
@@ -320,6 +363,8 @@ pub const Interpreter = struct {
     }
 };
 
+// Tests that need access to private methods
+const expectEqual = std.testing.expectEqual;
 test "visitInteger should correctly return the integer value" {
     var dummyAST = Program{
         .id = "",
@@ -335,5 +380,5 @@ test "visitInteger should correctly return the integer value" {
 
     const dummyToken = Token{ .lexeme = "", .allocator = undefined, .type = TokenType.eof, .line = 0 };
     var num = Num{ .token = dummyToken, .value = 42 };
-    try std.testing.expectEqual(42, interp.visitInteger(&num));
+    try expectEqual(42, interp.visitInteger(&num));
 }

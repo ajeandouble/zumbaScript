@@ -2,7 +2,7 @@
 
 <p align="center"><img src="https://github.com/user-attachments/assets/98dbd173-c2db-4e5b-a9c5-7be61cc9cba5" width="35%"></img></p>
 
-As in ***`Zumba`*** + *`Script`* [^1]
+As in **_`Zumba`_** + _`Script`_ [^1]
 
 [^1]: Self-explanatory.
 
@@ -52,8 +52,9 @@ variable: ID
   - [x] Parse function declarations in global scope
   - [x] Parse control flow
     - [x] If block
-    - [X] Else block
-    - [ ] While block
+    - [x] Else block
+    - [x] While block
+      - [ ] Break statement
   - [ ] Floats
   - [ ] Arrays subscripting
   - [ ] Strings subscripting
@@ -66,8 +67,9 @@ variable: ID
     - [x] Calls
   - [x] Control flow
     - [x] If block
-    - [ ] Else block
-    - [ ] While block
+    - [x] Else block
+    - [x] While block
+      - [ ] Break statement
 
 ## Resources
 
