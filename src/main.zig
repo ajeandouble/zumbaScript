@@ -6,8 +6,6 @@ const TokenType = @import("tokens.zig").TokenType;
 const Parser = @import("./parser.zig").Parser;
 const Interpreter = @import("./interpreter.zig").Interpreter;
 
-const AstNode = @import("./ast_nodes.zig"); // FIXME: delete this shit!
-
 const MAX_STDIN_SIZE = 4096;
 
 fn parseArgs(args: [][:0]u8) void {
@@ -42,9 +40,7 @@ pub fn main() !u8 {
     const ast = try parser.parse();
     defer parser.deinit();
 
-    var gpa_ = (std.heap.GeneralPurposeAllocator(.{}){});
-    const allocator_ = gpa_.allocator();
-    var interpreter = try Interpreter.init(ast, allocator_);
+    var interpreter = try Interpreter.init(ast, allocator);
     const ret: u8 = @intCast(try interpreter.interpret());
     defer interpreter.deinit();
     return ret;

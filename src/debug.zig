@@ -2,16 +2,18 @@ const std = @import("std");
 const Token = @import("./tokens.zig").Token;
 const Node = @import("./ast_nodes.zig").Node;
 
-pub var verbose: bool = true;
+pub var verbose = false;
 
 pub fn print(comptime fmt: []const u8, args: anytype, comptime src: std.builtin.SourceLocation) void {
-    if (verbose) {
-        const filename = std.fs.path.basename(src.file);
-        std.debug.print("{s}:{}\t{s}\t" ++ fmt, .{ filename, src.line, src.fn_name } ++ args);
-    }
+    if (!verbose) return;
+
+    const filename = std.fs.path.basename(src.file);
+    std.debug.print("{s}:{}\t{s}\t" ++ fmt, .{ filename, src.line, src.fn_name } ++ args);
 }
 
 pub fn printNodeUnion(object: *const Node, comptime src: std.builtin.SourceLocation) void {
+    if (!verbose) return;
+
     const info = @typeInfo(@TypeOf(object.*));
 
     if (info != .@"union") {
@@ -41,6 +43,7 @@ pub fn printNodeUnion(object: *const Node, comptime src: std.builtin.SourceLocat
 }
 
 pub fn printUnion(comptime T: type, object: T, comptime src: std.builtin.SourceLocation) void {
+    if (!verbose) return;
     const info = @typeInfo(Node);
 
     if (info != .@"union") {

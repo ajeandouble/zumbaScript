@@ -239,25 +239,25 @@ pub const Interpreter = struct {
         const lhs_val = lhs_result.value.integer;
         const rhs_val = rhs_result.value.integer;
         dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
-        var new_val: i64 = undefined;
+        var computed: i64 = undefined;
         switch (binop.token.type) {
-            TokenType.plus => new_val = lhs_result.value.integer + rhs_result.value.integer,
-            TokenType.minus => new_val = lhs_result.value.integer - rhs_result.value.integer,
-            TokenType.mul => new_val = lhs_result.value.integer * rhs_result.value.integer,
-            TokenType.div => new_val = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
-            TokenType.mod => new_val = @mod(lhs_result.value.integer, rhs_result.value.integer),
+            TokenType.plus => computed = lhs_result.value.integer + rhs_result.value.integer,
+            TokenType.minus => computed = lhs_result.value.integer - rhs_result.value.integer,
+            TokenType.mul => computed = lhs_result.value.integer * rhs_result.value.integer,
+            TokenType.div => computed = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
+            TokenType.mod => computed = @mod(lhs_result.value.integer, rhs_result.value.integer),
 
-            TokenType.lt => new_val = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
-            TokenType.le => new_val = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
-            TokenType.eq => new_val = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
-            TokenType.ge => new_val = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
-            TokenType.gt => new_val = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
+            TokenType.lt => computed = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
+            TokenType.le => computed = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
+            TokenType.eq => computed = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
+            TokenType.ge => computed = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
+            TokenType.gt => computed = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
 
             else => return NotImplented,
         }
         _ = self;
-        dbg.print("new_val == {}\n", .{new_val}, @src());
-        return new_val;
+        dbg.print("new_val == {}\n", .{computed}, @src());
+        return computed;
     }
 
     fn visitAssignment(self: *Self, binop: *const BinOp) !Result {
@@ -363,6 +363,8 @@ pub const Interpreter = struct {
     }
 };
 
+// Tests that need access to private methods
+const expectEqual = std.testing.expectEqual;
 test "visitInteger should correctly return the integer value" {
     var dummyAST = Program{
         .id = "",
@@ -378,5 +380,5 @@ test "visitInteger should correctly return the integer value" {
 
     const dummyToken = Token{ .lexeme = "", .allocator = undefined, .type = TokenType.eof, .line = 0 };
     var num = Num{ .token = dummyToken, .value = 42 };
-    try std.testing.expectEqual(42, interp.visitInteger(&num));
+    try expectEqual(42, interp.visitInteger(&num));
 }
