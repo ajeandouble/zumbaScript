@@ -2,6 +2,7 @@ const std = @import("std");
 const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
 const Parser = @import("./parser.zig").Parser;
+const ParserError = @import("./parser.zig").Error;
 const Node = @import("./ast_nodes.zig").Node;
 
 const expect = std.testing.expect;
@@ -66,6 +67,18 @@ fn isIfBlock(node: *const Node) bool {
 
 fn isElseBlock(node: *const Node) bool {
     return (node.* == .else_block);
+}
+
+fn isWhileBlock(node: *const Node) bool {
+    return (node.* == .while_block);
+}
+
+fn isBreakStatement(node: *const Node) bool {
+    return (node.* == .break_stmt);
+}
+
+fn isContinueStatement(node: *const Node) bool {
+    return (node.* == .continue_stmt);
 }
 
 test "parser init and cleanup" {
@@ -740,4 +753,111 @@ test "parseProgram - main, if block with statement, else if block and else block
     const next_else = else_block.next_else.?;
     try std.testing.expectEqual(0, next_else.statements.items.len);
     try std.testing.expectEqual(null, next_else.condition);
+}
+
+test "parseProgram - main, while statement with continue and break" {
+    var tokens = [_]Token{
+        // `function main ( ) {`
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+
+        // `while ( 0 ) {`
+        Token{ .type = TokenType.while_kw, .lexeme = "while", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "0", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+
+        // `break ;`
+        Token{ .type = TokenType.break_kw, .lexeme = "break", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+
+        // `continue ;`
+        Token{ .type = TokenType.continue_kw, .lexeme = "continue", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+
+        // `} }`
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.global_statements.items.len, 0);
+
+    const func_main = program.functions.items[0].*.func_decl;
+    try std.testing.expectEqualStrings(func_main.id, "main");
+    try std.testing.expectEqual(func_main.statements.items.len, 1);
+
+    const while_stmt = func_main.statements.items[0];
+    try std.testing.expect(isWhileBlock(while_stmt));
+    try std.testing.expectEqualStrings("while", while_stmt.while_block.token.lexeme.?);
+
+    // Test while condition
+    const while_cond = while_stmt.while_block.condition;
+    try std.testing.expect(isNum(while_cond));
+    try std.testing.expectEqual(0, while_cond.num.value);
+
+    // Test 2 while block statements
+    try std.testing.expectEqual(2, while_stmt.while_block.statements.items.len);
+    const statements = while_stmt.while_block.statements;
+    try std.testing.expect(isBreakStatement(statements.items[0]));
+    try std.testing.expect(isContinueStatement(statements.items[1]));
+}
+
+test "break outside loop raises error" {
+    var tokens = [_]Token{
+        // `function main ( ) {`
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+
+        // `break ;`
+        Token{ .type = TokenType.break_kw, .lexeme = "break", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+
+        // `}`
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = parser.parse();
+    try std.testing.expectError(ParserError.InvalidLoopStatement, program);
+}
+
+test "continue outside loop raises error" {
+    var tokens = [_]Token{
+        // `function main ( ) {`
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+
+        // `continue ;`
+        Token{ .type = TokenType.continue_kw, .lexeme = "continue", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+
+        // `}`
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = parser.parse();
+    try std.testing.expectError(ParserError.InvalidLoopStatement, program);
 }

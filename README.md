@@ -54,7 +54,7 @@ variable: ID
     - [x] If block
     - [x] Else block
     - [x] While block
-      - [ ] Break statement
+      - [x] Break statement
   - [ ] Floats
   - [ ] Arrays subscripting
   - [ ] Strings subscripting
@@ -69,7 +69,7 @@ variable: ID
     - [x] If block
     - [x] Else block
     - [x] While block
-      - [ ] Break statement
+      - [x] Break statement
 
 ## Resources
 

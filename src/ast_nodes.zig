@@ -150,4 +150,26 @@ pub const WhileBlock = struct {
     }
 };
 
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock, else_block: *ElseBlock, while_block: *WhileBlock };
+pub const BreakStatement = struct {
+    const Self = @This();
+    token: Token = undefined,
+
+    pub fn make(break_stmt: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = break_stmt;
+        return instance;
+    }
+};
+
+pub const ContinueStatement = struct {
+    const Self = @This();
+    token: Token = undefined,
+
+    pub fn make(break_stmt: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = break_stmt;
+        return instance;
+    }
+};
+
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock, else_block: *ElseBlock, while_block: *WhileBlock, break_stmt: *BreakStatement, continue_stmt: *ContinueStatement };

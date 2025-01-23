@@ -2,27 +2,27 @@ const std = @import("std");
 const dbg = @import("./debug.zig");
 const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
+const res_kw = @import("./lex_constants.zig");
 const AstNode = @import("./ast_nodes.zig");
 const Node = AstNode.Node;
-const res_kw = @import("./lex_constants.zig");
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
 
-const Error = error{ ParsingError, BadToken, UnexpectedEndOfInput, MissingSemiColumn, NullTokens, NullLexeme, UnexpectedNodeType, InvalidElseStatement };
+pub const Error = error{ ParsingError, BadToken, UnexpectedEndOfInput, MissingSemiColumn, NullTokens, NullLexeme, UnexpectedNodeType, InvalidElseStatement, InvalidLoopStatement };
 
 pub const Parser = struct {
     const Self = @This();
     tokens: ?std.ArrayList(Token),
     tok_idx: usize = 0,
     arena: std.heap.ArenaAllocator,
-
     ast: *const Node = undefined,
+    loops_counter: usize = 0,
 
     pub fn init(tokens_slice: []const Token, allocator: std.mem.Allocator) !Self {
         var arena = std.heap.ArenaAllocator.init(allocator);
         const arena_alloc = arena.allocator();
-        var token_list = std.ArrayList(Token).init(arena_alloc);
-        try token_list.ensureTotalCapacity(tokens_slice.len);
+        var tokens = std.ArrayList(Token).init(arena_alloc);
+        try tokens.ensureTotalCapacity(tokens_slice.len);
 
         for (tokens_slice) |token| {
             var lexeme: []const u8 = undefined;
@@ -32,13 +32,9 @@ pub const Parser = struct {
                 lexeme = try arena_alloc.dupe(u8, "");
             }
             const new_token = try Token.init(token.type, lexeme, token.line, arena_alloc);
-            try token_list.append(new_token);
+            try tokens.append(new_token);
         }
-
-        return Self{
-            .arena = arena,
-            .tokens = token_list,
-        };
+        return Self{ .arena = arena, .tokens = tokens, .loops_counter = 0 };
     }
 
     pub fn deinit(self: *Self) void {
@@ -255,6 +251,7 @@ pub const Parser = struct {
         const ret = try AstNode.Return.make(AstNode.Return{ .token = token, .expr = expr }, self.arena.allocator());
         return try self.makeNode(Node{ .ret = ret });
     }
+
     pub fn parseElseBlocks(self: *Self) !(?*AstNode.ElseBlock) {
         dbg.print("\n", .{}, @src());
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
@@ -328,9 +325,48 @@ pub const Parser = struct {
         return whileBlock;
     }
 
+    pub fn parseLoopBlock(self: *Self) anyerror!*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        self.loops_counter += 1;
+        switch (token.type) {
+            TokenType.while_kw => return self.parseWhileBlock(),
+            else => return Error.ParsingError,
+        }
+        self.loops_counter -= 1;
+    }
+
+    pub fn parseLoopStatement(self: *Self) anyerror!*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+
+        // `break` and `continue` keywords shall only be used inside loop block (or nested if block)
+        if (self.loops_counter < 1) {
+            return Error.InvalidLoopStatement;
+        }
+        switch (token.type) {
+            .break_kw => {
+                try self.eat(TokenType.break_kw);
+                try self.eat(TokenType.semi);
+                return try self.makeNode(Node{ .break_stmt = try AstNode.BreakStatement.make(AstNode.BreakStatement{
+                    .token = token,
+                }, self.arena.allocator()) });
+            },
+            .continue_kw => {
+                try self.eat(TokenType.continue_kw);
+                try self.eat(TokenType.semi);
+                return try self.makeNode(Node{ .continue_stmt = try AstNode.ContinueStatement.make(AstNode.ContinueStatement{
+                    .token = token,
+                }, self.arena.allocator()) });
+            },
+            else => unreachable,
+        }
+    }
+
     pub fn parseStatement(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+
         switch (token.type) {
             .integer, .lparen, .rparen, .plus, .minus => {
                 const expr = try self.parseExpr();
@@ -353,8 +389,9 @@ pub const Parser = struct {
                 }
             },
             .if_kw => return self.parseIfBlock(),
-            .while_kw => return self.parseWhileBlock(),
+            .while_kw, .for_kw => return self.parseLoopBlock(),
             .return_kw => return self.parseReturnStatement(),
+            .break_kw, .continue_kw => return self.parseLoopStatement(),
             else => {
                 return Error.BadToken;
             },
@@ -362,7 +399,7 @@ pub const Parser = struct {
         return Error.BadToken;
     }
 
-    pub fn parseLocalStatements(self: *Self) anyerror!std.ArrayList(*Node) {
+    pub fn parseScopeStatements(self: *Self) anyerror!std.ArrayList(*Node) {
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         var statements = std.ArrayList(*Node).init(self.arena.allocator());
@@ -378,7 +415,7 @@ pub const Parser = struct {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         try self.eat(TokenType.lbrace);
-        const statements = try self.parseLocalStatements();
+        const statements = try self.parseScopeStatements();
         try self.eat(TokenType.rbrace);
         return statements;
     }
@@ -411,7 +448,10 @@ pub const Parser = struct {
         try self.eat(TokenType.lparen);
         const args = try self.parseDeclArgs();
         try self.eat(TokenType.rparen);
+        self.loops_counter = 0; // number of nested loops in current function declaration
         const body = try self.parseCompoundStatement();
+        self.loops_counter = 0;
+
         return self.makeNode(Node{ .func_decl = try AstNode.FunctionDecl.make(AstNode.FunctionDecl{ .id = func_id, .token = token, .statements = body, .args = args }, self.arena.allocator()) });
     }
 
