@@ -20,22 +20,26 @@ compound_statement:                  LBRACE empty RBRACE | LBRACE statements_lis
 statements_list:                     statement | statement SEMI statements_list
 statement:                           expr | assignment | if_block | return_statement
 
+loop_compound_statement:            LBRACE empty RBRACE | LBRACE loop_statements_list RBRACE
+loop_statements_list:               state | loop_statement
+loop_statement:						break | continue | statement
+
 expr:                                arithmetic ((LT | LE | EQ | GE | GT) arithmetic)*
 arithmetic:                          term ((PLUS | MINUS) term)*
 term:                                factor ((MUL | DIV) factor)*
 factor:                              PLUS factor
-                                     | MINUS factor
-                                     | INTEGER
-                                     | LPAREN expr RPAREN
-                                     | variable
-                                     | function_call
-                                     | STRING
+									 | MINUS factor
+									 | INTEGER
+									 | LPAREN expr RPAREN
+									 | variable
+									 | function_call
+									 | STRING
 
 assignment:                          ID ASSIGN expr
 
 if_block:                            IF LPAREN expr RPAREN compound_statement |  IF LPAREN expr RPAREN compound_statement else_block
 else_block:                          ELSE compound_statement | ELSE if_block
-
+while_block:                        WHILE LPAREN expr RPAREN loop_compound_statement
 return_statement:                    RETURN expr
 
 function_call:                      ID LPAREN call_args RPAREN
@@ -51,10 +55,10 @@ variable: ID
 
   - [x] Parse function declarations in global scope
   - [x] Parse control flow
-    - [x] If block
-    - [x] Else block
-    - [x] While block
-      - [x] Break statement
+  - [x] If block
+  - [x] Else block
+  - [x] While block
+    - [x] Break statement
   - [ ] Floats
   - [ ] Arrays subscripting
   - [ ] Strings subscripting
@@ -63,13 +67,13 @@ variable: ID
   - [x] Global statements
   - [x] Expressions
   - [x] Functions
-    - [x] Global hoisted declarations
-    - [x] Calls
+  - [x] Global hoisted declarations
+  - [x] Calls
   - [x] Control flow
-    - [x] If block
-    - [x] Else block
-    - [x] While block
-      - [x] Break statement
+  - [x] If block
+  - [x] Else block
+  - [x] While block
+    - [x] Break statement
 
 ## Resources
 

@@ -11,12 +11,17 @@ const Variable = @import("./ast_nodes.zig").Variable;
 const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
 const IfBlock = @import("./ast_nodes.zig").IfBlock;
 const WhileBlock = @import("./ast_nodes.zig").WhileBlock;
+const BreakStatement = @import("./ast_nodes.zig").BreakStatement;
+const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
 const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
+
+pub const exit = @import("std").process.exit;
+
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression };
 
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
@@ -27,6 +32,8 @@ const Result = union(ResultType) { value: Value, err: struct { type: Error, msg:
 pub const StackFrame = struct {
     const Self = @This();
     symbols: std.StringHashMap(Result),
+    break_stmt: bool = false,
+    continue_stmt: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const locals = std.StringHashMap(Result).init(allocator);
@@ -82,15 +89,12 @@ pub const Interpreter = struct {
         return num.value;
     }
 
-    // Interpretation of funtion body
     fn visitCompoundStatement(self: *Self, statements: std.ArrayList(*Node)) !Result {
         dbg.print("\n", .{}, @src());
         var result: Result = Result{ .value = .{ .void = {} } };
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
-            if (self.return_val != null) {
-                break;
-            }
+
             switch (stmt.*) {
                 .ret => {
                     dbg.print("ret\n", .{}, @src());
@@ -102,6 +106,11 @@ pub const Interpreter = struct {
                 else => result = try self.visit(stmt),
             }
             dbg.print("{} {?}\n", .{ result, self.return_val }, @src());
+            const stack_frame = self.stack.getLast();
+            if (self.return_val != null or stack_frame.break_stmt or stack_frame.continue_stmt) {
+                dbg.print("return_val == {any} break_stmt == {} continue_stmt == {}\n", .{ self.return_val, stack_frame.break_stmt, stack_frame.continue_stmt }, @src());
+                break;
+            }
         }
         return result;
     }
@@ -164,7 +173,6 @@ pub const Interpreter = struct {
             else => return Error.InvalidIfBlockExpression,
         }
         if (condition) {
-            dbg.print("else or no else\n", .{}, @src());
             return self.visitCompoundStatement(if_block.statements);
         } else {
             var curr_next_else = if_block.next_else orelse return Result{ .value = .{ .void = {} } };
@@ -179,7 +187,6 @@ pub const Interpreter = struct {
                     }
                 }
                 if (condition) {
-                    dbg.print("else or no else\n", .{}, @src());
                     return self.visitCompoundStatement(curr_next_else.statements);
                 }
                 curr_next_else = curr_next_else.next_else orelse return Result{ .value = .{ .void = {} } };
@@ -198,16 +205,34 @@ pub const Interpreter = struct {
             return Error.InvalidWhileBlockExpression;
         }
         while (condition) {
+            dbg.print("while condition == {}\n", .{condition}, @src());
             _ = try self.visitCompoundStatement(while_block.statements);
             if (self.return_val != null) {
                 break;
             }
             expr_result = try self.visit(while_block.condition);
+            if (self.stack.getLast().break_stmt) {
+                self.stack.items[self.stack.items.len - 1].break_stmt = false;
+                break;
+            }
+            if (self.stack.getLast().continue_stmt) {
+                self.stack.items[self.stack.items.len - 1].continue_stmt = false;
+                continue;
+            }
             if (expr_result.value == .integer) {
                 condition = expr_result.value.integer != 0;
             } else {
                 return Error.InvalidWhileBlockExpression;
             }
+        }
+        return Result{ .value = .{ .void = {} } };
+    }
+
+    fn visitLoopStatement(self: *Self, node: *const Node) anyerror!Result {
+        switch (node.*) {
+            .break_stmt => self.stack.items[self.stack.items.len - 1].break_stmt = true,
+            .continue_stmt => self.stack.items[self.stack.items.len - 1].continue_stmt = true,
+            else => unreachable,
         }
         return Result{ .value = .{ .void = {} } };
     }
@@ -223,9 +248,8 @@ pub const Interpreter = struct {
             .func_call => return try self.visitFuncCall(node.*.func_call),
             .if_block => return try self.visitIfBlock(node.*.if_block),
             .while_block => return try self.visitWhileBlock(node.*.while_block),
-            else => {
-                return Error.InterpretError;
-            },
+            .break_stmt, .continue_stmt => return try self.visitLoopStatement(node),
+            else => return Error.InterpretError,
         }
     }
 
