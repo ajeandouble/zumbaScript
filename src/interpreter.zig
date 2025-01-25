@@ -34,13 +34,18 @@ pub const StackFrame = struct {
     symbols: std.StringHashMap(Result),
     break_stmt: bool = false,
     continue_stmt: bool = false,
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const locals = std.StringHashMap(Result).init(allocator);
-        return Self{ .symbols = locals };
+        return Self{ .symbols = locals, .allocator = allocator };
     }
 
     pub fn deinit(self: *Self) void {
+        var it = self.symbols.iterator();
+        while (it.next()) |item| {
+            self.allocator.free(item.key_ptr.*);
+        }
         self.symbols.deinit();
     }
 };
@@ -61,11 +66,16 @@ pub const Interpreter = struct {
 
     pub fn deinit(self: *Self) void {
         self.stack.deinit();
+        var it_funcs = self.global_funcs.iterator();
+        while (it_funcs.next()) |item| {
+            self.allocator.free(item.key_ptr.*);
+        }
         self.global_funcs.deinit();
     }
 
     // Stack
     pub fn pushStackFrame(self: *Self) !void {
+        dbg.print("\n", .{}, @src());
         const frame = try StackFrame.init(self.allocator);
         try self.stack.append(frame);
         dbg.print("Stack: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
@@ -73,12 +83,8 @@ pub const Interpreter = struct {
 
     pub fn popStackFrame(self: *Self) !void {
         dbg.print("\n", .{}, @src());
-        const frame = &self.stack.getLast();
-        var it = frame.symbols.iterator();
-        while (it.next()) |item| {
-            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
-            dbg.print("{}\n", .{item.value_ptr.*}, @src());
-        }
+        var frame = @constCast(&self.stack.getLast());
+        frame.deinit();
         _ = self.stack.pop();
     }
 
@@ -112,15 +118,6 @@ pub const Interpreter = struct {
                 break;
             }
         }
-        return result;
-    }
-
-    fn visitFuncBody(self: *Self, func_decl: *const FunctionDecl) !Result {
-        dbg.print("{s}\n", .{func_decl.id}, @src());
-        try self.pushStackFrame();
-        const statements = func_decl.statements.items;
-        const result = try self.visitCompoundStatement(statements);
-        try self.popStackFrame();
         return result;
     }
 
@@ -286,17 +283,21 @@ pub const Interpreter = struct {
 
     fn visitAssignment(self: *Self, binop: *const BinOp) !Result {
         dbg.print("\n", .{}, @src());
-        const locals_ptr = &(self.stack.items[self.stack.items.len - 1].symbols);
-        var locals = locals_ptr.*;
-        const id = try self.allocator.dupe(u8, binop.*.lhs.variable.id);
+        const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
+        const locals_ptr = &last_item_ptr.*.symbols;
         const rhs_result = try self.visit(binop.rhs);
-        try locals.put(id, rhs_result);
-        var it = self.stack.getLast().symbols.iterator();
+        const id = binop.lhs.*.variable.id;
+        if (locals_ptr.*.getPtr(id)) |val_ptr| {
+            val_ptr.* = rhs_result;
+        } else {
+            const key = try self.allocator.dupe(u8, id);
+            try locals_ptr.*.put(key, rhs_result);
+        }
+        var it = last_item_ptr.*.symbols.iterator();
         while (it.next()) |item| {
             dbg.print("{s}\n", .{item.key_ptr.*}, @src());
             dbg.print("{}\n", .{item.value_ptr.*}, @src());
         }
-        locals_ptr.* = locals;
         return rhs_result;
     }
 
@@ -334,6 +335,9 @@ pub const Interpreter = struct {
     pub fn interpret(self: *Self) !i64 {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
+
+        try self.pushStackFrame();
+        dbg.print("global_len: {}\n", .{self.ast.global_statements.items.len}, @src());
         const global_statements = self.ast.global_statements;
         for (global_statements.items) |stmt| {
             switch (stmt.*) {
@@ -343,6 +347,15 @@ pub const Interpreter = struct {
                 else => return Error.InvalidGlobalStatement,
             }
         }
+        var i: usize = 0;
+        const global_symbols = self.stack.items[0].symbols;
+        var it = global_symbols.iterator();
+        while (it.next()) |item| {
+            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
+            dbg.print("{}\n", .{item.value_ptr.*}, @src());
+            i += 1;
+        }
+
         dbg.print("funcs_len: {}\n", .{self.ast.functions.items.len}, @src());
         for (functions.items) |func| {
             switch (func.*) {
@@ -360,10 +373,10 @@ pub const Interpreter = struct {
                 else => return Error.InterpretError,
             }
         }
-        dbg.print("global_len: {}\n", .{self.ast.global_statements.items.len}, @src());
-        var i: usize = 0;
-        try self.pushStackFrame();
         const result = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
+        try self.popStackFrame();
+
+        std.debug.print("{}\n", .{self.stack.items.len});
         switch (result) {
             .value => {
                 switch (result.value) {
@@ -375,14 +388,6 @@ pub const Interpreter = struct {
             },
             .err => return Error.MainShouldReturnInteger,
         }
-        const global_symbols = self.stack.items[0].symbols;
-        var it = global_symbols.iterator();
-        while (it.next()) |item| {
-            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
-            dbg.print("{}\n", .{item.value_ptr.*}, @src());
-            i += 1;
-        }
-        try self.popStackFrame();
         return result.ret.integer;
     }
 };
