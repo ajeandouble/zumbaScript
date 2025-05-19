@@ -3,8 +3,6 @@ const std = @import("std");
 const Error = error{NullLexeme};
 
 pub const TokenType = enum {
-    __dummy__, // Debug only!
-
     // Reserved keywords
     function_kw,
     return_kw,
@@ -32,7 +30,7 @@ pub const TokenType = enum {
     eof,
     eol,
 
-    // Binary math operator
+    // Unary/Binary math operators
     plus,
     minus,
     mul,
@@ -46,7 +44,7 @@ pub const TokenType = enum {
     ge,
     gt,
 
-    // Value associated token,
+    // Value associated token
     string,
     integer,
     id,
