@@ -53,7 +53,6 @@ pub const Parser = struct {
     fn eat(self: *Self, typ: TokenType) Error!void {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
-
         if (token.type != typ) {
             dbg.print("Got bad token {}, expected {}\n", .{ typ, token.type }, @src());
             return Error.BadToken;
@@ -93,7 +92,7 @@ pub const Parser = struct {
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         try self.eat(TokenType.integer);
         const n = try std.fmt.parseInt(i64, try token.getLexeme(), 10);
-        const node = try self.makeNode(Node{ .num = try AstNode.Num.make(AstNode.Num{ .token = token, .value = n }, self.arena.allocator()) });
+        const node = try self.makeNode(Node{ .num = AstNode.Num{ .token = token, .value = n } });
         return node;
     }
 
@@ -102,7 +101,7 @@ pub const Parser = struct {
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         try self.eat(TokenType.id);
         const id = try self.arena.allocator().dupe(u8, try token.getLexeme());
-        const node = try self.makeNode(Node{ .variable = try AstNode.Variable.make(AstNode.Variable{ .token = token, .id = id }, self.arena.allocator()) });
+        const node = try self.makeNode(Node{ .variable = AstNode.Variable{ .token = token, .id = id } });
         return node;
     }
 
@@ -114,7 +113,7 @@ pub const Parser = struct {
         const assign_token = try self.current() orelse return Error.UnexpectedEndOfInput;
         try self.eat(TokenType.assign);
         const rhs = try self.parseExpr();
-        return try self.makeNode(Node{ .binop = try AstNode.BinOp.make(AstNode.BinOp{ .token = assign_token, .lhs = lhs, .rhs = rhs }, self.arena.allocator()) });
+        return try self.makeNode(Node{ .binop = AstNode.BinOp{ .token = assign_token, .lhs = lhs, .rhs = rhs } });
     }
 
     pub fn parseCallArgs(self: *Self) anyerror!std.ArrayList(*Node) {
@@ -141,16 +140,13 @@ pub const Parser = struct {
 
         // Create FunctionCall first
         const id = try self.arena.allocator().dupe(u8, try token.getLexeme());
-        const func_call = try AstNode.FunctionCall.make(AstNode.FunctionCall{
+        const func_call = try self.makeNode(Node{ .func_call = AstNode.FunctionCall{
             .token = token,
             .id = id,
             .args = args,
-        }, self.arena.allocator());
+        } });
 
-        const node = try self.arena.allocator().create(Node);
-        node.* = Node{ .func_call = func_call };
-
-        return node;
+        return func_call;
     }
 
     pub fn parseFactor(self: *Self) anyerror!*Node {
@@ -176,7 +172,7 @@ pub const Parser = struct {
             .plus, .minus => {
                 try self.eat(token.type);
                 const value = try self.parseFactor();
-                node = try self.makeNode(Node{ .unaryop = try AstNode.UnaryOp.make(AstNode.UnaryOp{ .token = token, .value = value }, self.arena.allocator()) });
+                node = try self.makeNode(Node{ .unaryop = AstNode.UnaryOp{ .token = token, .value = value } });
             },
             else => {
                 return Error.BadToken;
@@ -196,7 +192,7 @@ pub const Parser = struct {
             try self.eat(current_token.type);
             const rhs = try self.parseFactor();
             const lhs = node;
-            const binop = try self.makeNode(Node{ .binop = try AstNode.BinOp.make(AstNode.BinOp{ .token = current_token, .lhs = lhs, .rhs = rhs }, self.arena.allocator()) });
+            const binop = try self.makeNode(Node{ .binop = AstNode.BinOp{ .token = current_token, .lhs = lhs, .rhs = rhs } });
             node = binop;
             current_token = try self.current() orelse break;
         }
@@ -215,10 +211,38 @@ pub const Parser = struct {
             try self.eat(token.type);
             const rhs = try self.parseTerm();
             const lhs = node;
-            const binop = try self.makeNode(Node{ .binop = try AstNode.BinOp.make(AstNode.BinOp{ .token = token, .lhs = lhs, .rhs = rhs }, self.arena.allocator()) });
+            const binop = try self.makeNode(Node{ .binop = AstNode.BinOp{ .token = token, .lhs = lhs, .rhs = rhs } });
             node = binop;
             token = try self.current() orelse break;
         }
+        return node;
+    }
+
+    pub fn parseArrayElements(self: *Self) anyerror!std.ArrayList(*Node) {
+        var curr_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ curr_tok.type, try curr_tok.getLexeme() }, @src());
+        var elems = std.ArrayList(*Node).init(self.arena.allocator());
+        while (true) {
+            switch (curr_tok.type) {
+                .rbrack => break,
+                else => try elems.append(try self.parseExpr()),
+            }
+            if (try self.peek(1).type == TokenType.comma) {
+                self.eat(TokenType.comma);
+            }
+            curr_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
+        }
+
+        return elems;
+    }
+
+    pub fn parseArrayDecl(self: *Self) anyerror!*Node {
+        var lbrack_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ lbrack_tok.type, try lbrack_tok.getLexeme() }, @src());
+        self.eat(TokenType.lbrack);
+        const elems = try self.parseArrayElements();
+        const node = try self.makeNode(Node{ .array = AstNode.Array{ .token = lbrack_tok, .elements = elems } });
+        try self.eat(TokenType.rbrack);
         return node;
     }
 
@@ -234,28 +258,26 @@ pub const Parser = struct {
                     const saved_node = node;
                     //dbg.print("{} \"{s}\"\n", .{ curr_token.type, curr_token.lexeme }, @src());
                     try self.eat(curr_token.type);
-                    node = try self.makeNode(Node{ .binop = try AstNode.BinOp.make(AstNode.BinOp{ .token = curr_token, .lhs = saved_node, .rhs = try self.parseExpr() }, self.arena.allocator()) });
+                    node = try self.makeNode(Node{ .binop = AstNode.BinOp{ .token = curr_token, .lhs = saved_node, .rhs = try self.parseExpr() } });
                 },
                 else => break,
             }
         }
         return node;
     }
-
     pub fn parseReturnStatement(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         try self.eat(TokenType.return_kw);
         const expr = try self.parseExpr();
         try self.eat(TokenType.semi);
-        const ret = try AstNode.Return.make(AstNode.Return{ .token = token, .expr = expr }, self.arena.allocator());
-        return try self.makeNode(Node{ .ret = ret });
+        return try self.makeNode(Node{ .ret = AstNode.Return{ .token = token, .expr = expr } });
     }
 
     pub fn parseElseBlocks(self: *Self) !(?*AstNode.ElseBlock) {
         dbg.print("\n", .{}, @src());
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
-        var curr_else = try AstNode.ElseBlock.make(.{ .next_else = null }, self.arena.allocator());
+        var curr_else: *AstNode.ElseBlock = @ptrCast(try self.makeNode(Node{ .else_block = AstNode.ElseBlock{ .next_else = null } }));
         const dummy = curr_else;
         var lonely_else = false;
         while (token.type == TokenType.else_kw) {
@@ -280,12 +302,14 @@ pub const Parser = struct {
             }
             const else_stmts = try self.parseCompoundStatement();
             token = try self.current() orelse return Error.UnexpectedEndOfInput;
-            curr_else.next_else = try AstNode.ElseBlock.make(AstNode.ElseBlock{
-                .condition = else_if_expr, // This will be null for plain else blocks
-                .statements = else_stmts,
-                .token = saved_token,
-                .next_else = null,
-            }, self.arena.allocator());
+            curr_else.next_else = @ptrCast(try self.makeNode(Node{
+                .else_block = AstNode.ElseBlock{
+                    .condition = else_if_expr, // This will be null for plain else blocks
+                    .statements = else_stmts,
+                    .token = saved_token,
+                    .next_else = null,
+                },
+            }));
             curr_else = curr_else.next_else.?;
             dbg.print("{}\n", .{token.type}, @src());
         }
@@ -300,15 +324,14 @@ pub const Parser = struct {
         const expr = try self.parseExpr();
         try self.eat(TokenType.rparen);
         const statements = try self.parseCompoundStatement();
-        const if_block = try AstNode.IfBlock.make(AstNode.IfBlock{ .condition = expr, .statements = statements, .token = token }, self.arena.allocator());
-        const ifBlock = try self.makeNode(Node{ .if_block = if_block });
+        const if_block = try self.makeNode(Node{ .if_block = AstNode.IfBlock{ .condition = expr, .statements = statements, .token = token } });
         token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("\t\t\t\t\t\tttype={}\t\t\t\n", .{token.type}, @src());
         if (token.type == TokenType.else_kw) {
-            ifBlock.if_block.next_else = try self.parseElseBlocks();
-            dbg.print("{}\n", .{ifBlock.if_block.next_else.?.token.type}, @src());
+            if_block.if_block.next_else = try self.parseElseBlocks();
+            dbg.print("{}\n", .{if_block.if_block.next_else.?.token.type}, @src());
         }
-        return ifBlock;
+        return if_block;
     }
 
     pub fn parseWhileBlock(self: *Self) anyerror!*Node {
@@ -319,10 +342,9 @@ pub const Parser = struct {
         const expr = try self.parseExpr();
         try self.eat(TokenType.rparen);
         const statements = try self.parseCompoundStatement();
-        const while_block = try AstNode.WhileBlock.make(AstNode.WhileBlock{ .condition = expr, .statements = statements, .token = token }, self.arena.allocator());
-        const whileBlock = try self.makeNode(Node{ .while_block = while_block });
+        const while_block = try self.makeNode(Node{ .while_block = AstNode.WhileBlock{ .condition = expr, .statements = statements, .token = token } });
         token = try self.current() orelse return Error.UnexpectedEndOfInput;
-        return whileBlock;
+        return while_block;
     }
 
     pub fn parseLoopBlock(self: *Self) anyerror!*Node {
@@ -348,16 +370,16 @@ pub const Parser = struct {
             .break_kw => {
                 try self.eat(TokenType.break_kw);
                 try self.eat(TokenType.semi);
-                return try self.makeNode(Node{ .break_stmt = try AstNode.BreakStatement.make(AstNode.BreakStatement{
+                return try self.makeNode(Node{ .break_stmt = AstNode.BreakStatement{
                     .token = token,
-                }, self.arena.allocator()) });
+                } });
             },
             .continue_kw => {
                 try self.eat(TokenType.continue_kw);
                 try self.eat(TokenType.semi);
-                return try self.makeNode(Node{ .continue_stmt = try AstNode.ContinueStatement.make(AstNode.ContinueStatement{
+                return try self.makeNode(Node{ .continue_stmt = AstNode.ContinueStatement{
                     .token = token,
-                }, self.arena.allocator()) });
+                } });
             },
             else => unreachable,
         }
@@ -452,7 +474,22 @@ pub const Parser = struct {
         const body = try self.parseCompoundStatement();
         self.loops_counter = 0;
 
-        return self.makeNode(Node{ .func_decl = try AstNode.FunctionDecl.make(AstNode.FunctionDecl{ .id = func_id, .token = token, .statements = body, .args = args }, self.arena.allocator()) });
+        return self.makeNode(Node{ .func_decl = AstNode.FunctionDecl{ .id = func_id, .token = token, .statements = body, .args = args } });
+    }
+
+    pub fn parseGlobalStmt(self: *Self) !*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+
+        return switch (token.type) {
+            TokenType.id => blk: {
+                const assign = try self.parseAssignment();
+                try self.eat(TokenType.semi);
+                break :blk assign;
+            },
+            TokenType.function_kw => try self.parseFuncDecl(),
+            else => Error.BadToken,
+        };
     }
 
     pub fn parseGlobalStatements(self: *Self) !Node {
@@ -463,21 +500,18 @@ pub const Parser = struct {
         while (token.type != TokenType.eof) {
             dbg.print("{} {s}\n", .{ token.type, try token.getLexeme() }, @src());
             switch (token.type) {
-                TokenType.id => {
-                    try global_statements.append(try self.parseAssignment());
-                    try self.eat(TokenType.semi);
-                },
-                TokenType.function_kw => {
+                .function_kw => {
                     try functions_decls.append(try self.parseFuncDecl());
                 },
                 else => {
-                    return Error.BadToken;
+                    const stmt = try self.parseStatement();
+                    try global_statements.append(stmt);
                 },
             }
             token = try self.current() orelse return Error.UnexpectedEndOfInput;
         }
 
-        return Node{ .program = try AstNode.Program.make(AstNode.Program{ .id = "main", .global_statements = global_statements, .functions = functions_decls }, self.arena.allocator()) };
+        return Node{ .program = AstNode.Program{ .id = "main", .global_statements = global_statements, .functions = functions_decls } };
     }
 
     pub fn parseProgram(self: *Self) !*AstNode.Program {
@@ -485,7 +519,7 @@ pub const Parser = struct {
         const node = try self.parseGlobalStatements();
         switch (node) {
             .program => |program| {
-                parsed_program.* = program.*;
+                parsed_program.* = program;
                 return parsed_program;
             },
             else => {

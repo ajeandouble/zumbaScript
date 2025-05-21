@@ -9,44 +9,51 @@ As in **_`Zumba`_** + _`Script`_ [^1]
 ## Grammar (so far)
 
 ```
-program:                            global_statement | global_statement SEMI program_statements_list
-global_statement:                   empty | assignment | function_decl
+program:                            global_statements
+global_statements:                  (assignment SEMI | function_decl)* function_decl
 
-function_decl:                      "function" ID LPAREN function_args RPAREN compound_statement
-function_args:                      empty | function_args_list |
-function_args_list:                 ID | ID COMMA function_args_list
+function_decl:                      FUNCTION ID LPAREN function_args RPAREN compound_statement
+function_args:                      empty | function_args_list
+function_args_list:                 ID (COMMA ID)*
 
-compound_statement:                 LBRACE empty RBRACE | LBRACE statements_list RBRACE
-statements_list:                    statement | statement SEMI statements_list
+compound_statement:                 LBRACE statements_list RBRACE
+statements_list:                    (statement SEMI)*
 statement:                          expr | assignment | if_block | return_statement
 
-loop_compound_statement:            LBRACE empty RBRACE | LBRACE loop_statements_list RBRACE
-loop_statements_list:               state | loop_statement
-loop_statement:						break | continue | statement
+loop_compound_statement:            LBRACE loop_statements_list RBRACE
+loop_statements_list:               ((statement | loop_statement) SEMI)*
+loop_statements:					break | continue | statement
 
 expr:                               arithmetic ((LT | LE | EQ | GE | GT) arithmetic)*
 arithmetic:                         term ((PLUS | MINUS) term)*
 term:                               factor ((MUL | DIV) factor)*
 factor:                             PLUS factor
-									| MINUS factor
-									| INTEGER
-									| LPAREN expr RPAREN
-									| variable
-									| function_call
-									| STRING
+								    | MINUS factor
+								    | INTEGER
+								    | LPAREN expr RPAREN
+                                    | variable
+								    | function_call
+                                    | array_subscript
+								    | STRING
 
-assignment:                         ID ASSIGN expr
+
+assignment:                         lvalue ASSIGN expr
+lvalue:                             ID | array_subscript
 
 if_block:                           IF LPAREN expr RPAREN compound_statement |  IF LPAREN expr RPAREN compound_statement else_block
 else_block:                         ELSE compound_statement | ELSE if_block
 while_block:                        WHILE LPAREN expr RPAREN loop_compound_statement
-return_statement:                   RETURN expr
+return_statements:                  RETURN expr
 
 function_call:                      ID LPAREN call_args RPAREN
 call_args:                          empty | call_args_list
-call_args_list:                     expr | expr COMMA call_args_list
+call_args_list:                     expr (COMMA expr)*
 
 variable:                           ID
+
+array_literal:                      LBRACKET array_elements RBRACKET
+array_elements:                     empty | expr (COMMA expr)
+array_subscript:                    lvalue LBRACKET expr RBRACKET
 ```
 
 ## TODO
