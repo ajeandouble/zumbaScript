@@ -21,19 +21,18 @@ const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFu
 
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
-
-const ResultType = enum { value, err };
-const Result = union(ResultType) { value: Value, err: struct { type: Error, msg: []u8 } };
+const EvalResultType = enum { value, err };
+const EvalResult = union(EvalResultType) { value: Value, err: struct { type: Error, msg: []u8 } };
 
 pub const StackFrame = struct {
     const Self = @This();
-    symbols: std.StringHashMap(Result),
+    symbols: std.StringHashMap(EvalResult),
     break_stmt: bool = false,
     continue_stmt: bool = false,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const locals = std.StringHashMap(Result).init(allocator);
+        const locals = std.StringHashMap(EvalResult).init(allocator);
         return Self{ .symbols = locals, .allocator = allocator };
     }
 
@@ -52,7 +51,7 @@ pub const Interpreter = struct {
     stack: std.ArrayList(StackFrame),
     global_funcs: std.StringHashMap(*const FunctionDecl),
     ast: *const Program = undefined,
-    return_val: ?Result = undefined,
+    return_val: ?EvalResult = undefined,
 
     pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
         const stack = try std.ArrayList(StackFrame).initCapacity(allocator, 1024);
@@ -91,9 +90,9 @@ pub const Interpreter = struct {
         return num.value;
     }
 
-    fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) !Result {
+    fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) !EvalResult {
         dbg.print("\n", .{}, @src());
-        var result: Result = Result{ .value = .{ .void = {} } };
+        var result: EvalResult = EvalResult{ .value = .{ .void = {} } };
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
 
@@ -117,7 +116,7 @@ pub const Interpreter = struct {
         return result;
     }
 
-    fn visitVariable(self: *Self, node: *const Variable) !Result {
+    fn visitVariable(self: *Self, node: *const Variable) !EvalResult {
         dbg.print("variable id={s}\n", .{node.id}, @src());
         var locals = self.stack.getLast().symbols;
         if (locals.get(node.id)) |value| {
@@ -146,7 +145,7 @@ pub const Interpreter = struct {
     //     }
     // }
 
-    fn visitFuncCall(self: *Self, func_call: *const FunctionCall) !Result {
+    fn visitFuncCall(self: *Self, func_call: *const FunctionCall) !EvalResult {
         dbg.print("\n", .{}, @src());
         const id = func_call.id;
         if (self.global_funcs.get(id)) |value| {
@@ -158,7 +157,7 @@ pub const Interpreter = struct {
     }
 
     // TODO: add a isTruethy function
-    fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
+    fn visitIfBlock(self: *Self, if_block: *const IfBlock) !EvalResult {
         dbg.print("\n", .{}, @src());
         const expr_result = try self.visit(if_block.condition);
         var condition: bool = undefined;
@@ -169,7 +168,7 @@ pub const Interpreter = struct {
         if (condition) {
             return self.visitStatements(if_block.statements);
         } else {
-            var curr_next_else = if_block.next_else orelse return Result{ .value = .{ .void = {} } };
+            var curr_next_else = if_block.next_else orelse return EvalResult{ .value = .{ .void = {} } };
             while (true) {
                 const else_condition = curr_next_else.condition;
                 condition = true;
@@ -183,13 +182,13 @@ pub const Interpreter = struct {
                 if (condition) {
                     return self.visitStatements(curr_next_else.statements);
                 }
-                curr_next_else = curr_next_else.next_else orelse return Result{ .value = .{ .void = {} } };
+                curr_next_else = curr_next_else.next_else orelse return EvalResult{ .value = .{ .void = {} } };
             }
         }
-        return Result{ .value = .{ .void = {} } };
+        return EvalResult{ .value = .{ .void = {} } };
     }
 
-    fn visitWhileBlock(self: *Self, while_block: *const WhileBlock) !Result {
+    fn visitWhileBlock(self: *Self, while_block: *const WhileBlock) !EvalResult {
         dbg.print("\n", .{}, @src());
         var expr_result = try self.visit(while_block.condition);
         var condition: bool = undefined;
@@ -219,22 +218,22 @@ pub const Interpreter = struct {
                 return Error.InvalidWhileBlockExpression;
             }
         }
-        return Result{ .value = .{ .void = {} } };
+        return EvalResult{ .value = .{ .void = {} } };
     }
 
-    fn visitLoopStatement(self: *Self, node: *const Node) anyerror!Result {
+    fn visitLoopStatement(self: *Self, node: *const Node) anyerror!EvalResult {
         switch (node.*) {
             .break_stmt => self.stack.items[self.stack.items.len - 1].break_stmt = true,
             .continue_stmt => self.stack.items[self.stack.items.len - 1].continue_stmt = true,
             else => unreachable,
         }
-        return Result{ .value = .{ .void = {} } };
+        return EvalResult{ .value = .{ .void = {} } };
     }
 
-    fn visit(self: *Self, node: *const Node) anyerror!Result {
+    fn visit(self: *Self, node: *const Node) anyerror!EvalResult {
         dbg.printNodeUnion(node, @src());
         switch (node.*) {
-            .num => return Result{ .value = .{ .integer = self.visitInteger(&node.num) } },
+            .num => return EvalResult{ .value = .{ .integer = self.visitInteger(&node.num) } },
             .binop => return try self.visitBinOp(&node.binop),
             .unaryop => return try self.visitUnaryOp(&node.unaryop),
             .variable => return try self.visitVariable(&node.variable),
@@ -246,7 +245,7 @@ pub const Interpreter = struct {
         }
     }
 
-    fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: Result, rhs_result: Result) !i64 {
+    fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: EvalResult, rhs_result: EvalResult) !i64 {
         dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
         dbg.printNodeUnion(&Node{ .binop = binop.* }, @src());
         dbg.print("{} {} {}\n", .{ lhs_result, binop.token.type, rhs_result }, @src());
@@ -277,7 +276,7 @@ pub const Interpreter = struct {
         return computed;
     }
 
-    fn visitAssignment(self: *Self, binop: *const BinOp) !Result {
+    fn visitAssignment(self: *Self, binop: *const BinOp) !EvalResult {
         dbg.print("\n", .{}, @src());
         const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
         const locals_ptr = &last_item_ptr.*.symbols;
@@ -297,7 +296,7 @@ pub const Interpreter = struct {
         return rhs_result;
     }
 
-    fn visitBinOp(self: *Self, binop: *const BinOp) !Result {
+    fn visitBinOp(self: *Self, binop: *const BinOp) !EvalResult {
         dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
         if (binop.token.type == TokenType.assign) {
             return try self.visitAssignment(binop);
@@ -307,13 +306,13 @@ pub const Interpreter = struct {
         const rhs_result = try self.visit(binop.rhs);
         switch (lhs_result.value) {
             .integer => {
-                return Result{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
+                return EvalResult{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
             },
             else => return NotImplented, // NOTE: e.g. concat strings
         }
     }
 
-    fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) !Result {
+    fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) !EvalResult {
         dbg.print("'{s}'\n", .{unaryop.token.lexeme.?}, @src());
         var result = try self.visit(unaryop.value);
 
@@ -348,7 +347,6 @@ pub const Interpreter = struct {
                         return Error.DuplicateFunctionDeclaration;
                     }
                     const key = try self.allocator.dupe(u8, decl.id);
-                    dbg.print("{s}\n", .{decl.id}, @src());
                     try self.global_funcs.put(key, &decl);
                 },
                 else => return Error.InterpretError,
@@ -376,7 +374,7 @@ pub const Interpreter = struct {
         }
         try self.popStackFrame();
 
-        const result = self.return_val orelse Result{ .value = .{ .void = {} } };
+        const result = self.return_val orelse EvalResult{ .value = .{ .void = {} } };
         switch (result) {
             .value => {
                 switch (result.value) {
