@@ -157,6 +157,7 @@ pub const Interpreter = struct {
         }
     }
 
+    // TODO: add a isTruethy function
     fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
         dbg.print("\n", .{}, @src());
         const expr_result = try self.visit(if_block.condition);
@@ -388,7 +389,6 @@ pub const Interpreter = struct {
             .err => return 1,
         }
         return result.ret.integer;
-        // return 0;
     }
 };
 

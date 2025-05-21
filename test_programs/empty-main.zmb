@@ -2,7 +2,7 @@ function main() {
     return g() + g() + 2;
 }
 
-return main();
+main();
 main();
 
 function g() { return 45 + 1; }
