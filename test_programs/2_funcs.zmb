@@ -11,6 +11,8 @@ function h() {
 function main() {
     a = 42;
     a = 42;
-    return g() * 10;
+    return g() * 10 + h() * 10;
 }
+h();
+h();
 return main();

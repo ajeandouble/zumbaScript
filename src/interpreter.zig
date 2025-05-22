@@ -146,13 +146,6 @@ pub const Interpreter = struct {
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
             const res = try self.visit(stmt);
-            switch (stmt.*) {
-                .func_call => {
-                    dbg.print("WTFf\n", .{}, @src());
-                    continue;
-                },
-                else => {},
-            }
             if (res.isError() or res.isControlFlow()) {
                 return res;
             }
@@ -178,7 +171,10 @@ pub const Interpreter = struct {
             dbg.print("id: {s}, statements len: {}, {*} {*}\n", .{ func_call.id, func.statements.items.len, self.global_funcs.get(id), func.statements.getLast() }, @src());
             const result = try self.visitStatements(func.statements);
             try self.popStackFrame();
-            return result;
+            return switch (result) {
+                .return_val => EvalResult.ok(result.return_val),
+                else => result,
+            };
         } else {
             return EvalResult.failure(.{ .type = Error.FunctionIsNotDeclared, .msg = "" });
         }
@@ -311,7 +307,6 @@ pub const Interpreter = struct {
     fn visitAssignment(self: *Self, binop: *const BinOp) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
-        dbg.print("WTF {}\n", .{self.stack.items.len}, @src());
         const locals_ptr = &last_item_ptr.*.symbols;
         const rhs_result = try self.visit(binop.rhs);
         const id = binop.lhs.*.variable.id;
