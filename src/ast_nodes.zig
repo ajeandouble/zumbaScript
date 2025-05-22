@@ -56,7 +56,7 @@ pub const Program = struct {
     functions: std.ArrayList(*Node),
 };
 
-pub const Return = struct {
+pub const ReturnStatement = struct {
     const Self = @This();
     token: Token = undefined,
     expr: *const Node = undefined,
@@ -95,4 +95,4 @@ pub const ContinueStatement = struct {
     token: Token = undefined,
 };
 
-pub const Node = union(enum) { num: Num, array: Array, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: Return, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement };
+pub const Node = union(enum) { num: Num, array: Array, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement };

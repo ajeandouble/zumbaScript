@@ -1,0 +1,15 @@
+
+g();
+h();
+function g() {
+    b = 43;
+    return 123;
+}
+function h() {
+    return 10;
+}
+function main() {
+    a = 43;
+    a = 43;
+    return 42;
+}

@@ -271,7 +271,7 @@ pub const Parser = struct {
         try self.eat(TokenType.return_kw);
         const expr = try self.parseExpr();
         try self.eat(TokenType.semi);
-        return try self.makeNode(Node{ .ret = AstNode.Return{ .token = token, .expr = expr } });
+        return try self.makeNode(Node{ .ret = AstNode.ReturnStatement{ .token = token, .expr = expr } });
     }
 
     pub fn parseElseBlocks(self: *Self) !(?*AstNode.ElseBlock) {
@@ -473,7 +473,6 @@ pub const Parser = struct {
         self.loops_counter = 0; // number of nested loops in current function declaration
         const body = try self.parseCompoundStatement();
         self.loops_counter = 0;
-
         return self.makeNode(Node{ .func_decl = AstNode.FunctionDecl{ .id = func_id, .token = token, .statements = body, .args = args } });
     }
 
