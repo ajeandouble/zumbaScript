@@ -146,6 +146,13 @@ pub const Interpreter = struct {
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
             const res = try self.visit(stmt);
+            switch (stmt.*) {
+                .func_call => {
+                    dbg.print("WTFf\n", .{}, @src());
+                    continue;
+                },
+                else => {},
+            }
             if (res.isError() or res.isControlFlow()) {
                 return res;
             }
