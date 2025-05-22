@@ -18,27 +18,48 @@ const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
-const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType };
+const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow };
 const ControlFlow = enum { Continue, Break, Return };
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
 const EvalResultErr = struct { type: Error, msg: []u8 };
-const EvalResult = struct {
+const EvalResult = union(enum) {
     const Self = @This();
-    value: ?Value,
-    err: ?EvalResultErr,
-    control: ?ControlFlow,
+    value: Value,
+    err: EvalResultErr,
+    break_stmt,
+    continue_stmt,
+    return_val: Value,
+
+    pub fn isValue(self: Self) bool {
+        return self == .value;
+    }
+
+    pub fn getValue(self: Self) Error!Value {
+        return switch (self) {
+            .value => self.value,
+            .err => |e| return e.type,
+            else => return Error.UnexpectedControlFlow,
+        };
+    }
 
     pub fn ok(value: Value) Self {
-        return Self{ .value = value, .control = null, .err = null };
+        return Self{ .value = value };
+    }
+
+    pub fn isError(self: Self) bool {
+        return self == .err;
     }
 
     pub fn failure(e: EvalResultErr) Self {
-        return Self{ .err = e, .value = null, .control = null };
+        return Self{ .err = e };
     }
 
-    pub fn controlFlow(stmt: ControlFlow) Self {
-        return Self{ .control = stmt, .value = null, .err = null };
+    pub fn isControlFlow(stmt: Self) bool {
+        return switch (stmt) {
+            .break_stmt, .continue_stmt, .return_val => true,
+            else => false,
+        };
     }
 };
 
@@ -88,7 +109,7 @@ pub const Interpreter = struct {
     pub inline fn isTruethy(value: Value) !bool {
         return switch (value) {
             .integer => value.integer != 0,
-            .string => Error.InvalidConditionType,
+            .string => Error.InvalidConditionType, // TODO: implement on strings
             else => Error.InvalidConditionType,
         };
     }
@@ -114,12 +135,12 @@ pub const Interpreter = struct {
         return EvalResult.ok(Value{ .integer = node.value });
     }
 
-    fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) EvalResult {
+    fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
-            const res = self.visit(stmt);
-            if (res.err != null or res.control != null) {
+            const res = try self.visit(stmt);
+            if (res.isError() or res.isControlFlow()) {
                 return res;
             }
         }
@@ -132,7 +153,7 @@ pub const Interpreter = struct {
         return EvalResult.ok(.{ .void = {} });
     }
 
-    fn visitVariable(self: *Self, node: *const Variable) EvalResult {
+    fn visitVariable(self: *Self, node: *const Variable) anyerror!EvalResult {
         dbg.print("variable id={s}\n", .{node.id}, @src());
         var locals = self.stack.getLast().symbols;
         if (locals.get(node.id)) |eval_result| {
@@ -142,38 +163,40 @@ pub const Interpreter = struct {
         }
     }
 
-    fn visitFuncCall(self: *Self, func_call: *const FunctionCall) EvalResult {
+    fn visitFuncCall(self: *Self, func_call: *const FunctionCall) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const id = func_call.id;
         if (self.global_funcs.get(id)) |func| {
             dbg.print("id: {s}, statements len: {}, {*} {*}\n", .{ func_call.id, func.statements.items.len, self.global_funcs.get(id), func.statements.getLast() }, @src());
-            return self.visitStatements(func.statements);
+            return try self.visitStatements(func.statements);
         } else {
             return EvalResult.failure(.{ .type = Error.FunctionIsNotDeclared, .msg = "" });
         }
     }
 
     // TODO: add a isTruethy function
-    fn visitIfBlock(self: *Self, if_block: *const IfBlock) EvalResult {
+    fn visitIfBlock(self: *Self, if_block: *const IfBlock) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
-        const cond_res = self.visit(if_block.condition);
-        if (cond_res.err != null) return cond_res;
-        if (cond_res.value) |value| {
-            const is_truethy = isTruethy(value) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
-            if (is_truethy) {
-                return self.visitStatements(if_block.statements);
-            }
+        const cond_res = try self.visit(if_block.condition);
+        if (cond_res.isError()) {
+            return cond_res;
+        }
+        const if_cond_val: Value = try cond_res.getValue();
+        const is_if_truethy = isTruethy(if_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+        if (is_if_truethy) {
+            return self.visitStatements(if_block.statements);
         }
         var curr_else = if_block.next_else orelse return EvalResult.ok(.{ .void = {} });
         while (true) {
             if (curr_else.condition) |else_cond| {
-                const else_res = self.visit(else_cond);
-                if (else_res.err != null) return else_res;
-                if (else_res.value) |value| {
-                    const is_truethy = isTruethy(value) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
-                    if (is_truethy) {
-                        return self.visitStatements(if_block.statements);
-                    }
+                const else_res = try self.visit(else_cond);
+                if (else_res.isError()) {
+                    return else_res;
+                }
+                const else_cond_val = try else_res.getValue();
+                const is_else_truethy = isTruethy(else_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+                if (is_else_truethy) {
+                    return self.visitStatements(if_block.statements);
                 }
             } else {
                 return self.visitStatements(curr_else.statements);
@@ -185,24 +208,25 @@ pub const Interpreter = struct {
         return EvalResult.ok(.{ .void = {} });
     }
 
-    fn visitWhileBlock(self: *Self, while_block: *const WhileBlock) EvalResult {
+    fn visitWhileBlock(self: *Self, while_block: *const WhileBlock) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         while (true) {
-            const cond_res = self.visit(while_block.condition);
-            if (cond_res.err != null) return cond_res;
-            if (cond_res.value == null) {
-                return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
+            const cond_res = try self.visit(while_block.condition);
+            if (cond_res.isError()) {
+                return cond_res;
             }
-            const is_truethy = isTruethy((cond_res.value orelse unreachable)) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+            const cond_res_val = cond_res.getValue() catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+            const is_truethy = try isTruethy(cond_res_val);
             if (!is_truethy) break;
 
-            const body_result = self.visitStatements(while_block.statements);
-            if (body_result.err != null) return body_result;
-            if (body_result.control != null) {
-                switch ((body_result.control orelse unreachable)) {
-                    ControlFlow.Return => return body_result,
-                    ControlFlow.Break => break,
-                    ControlFlow.Continue => continue,
+            const body_res = try self.visitStatements(while_block.statements);
+            if (body_res.isError()) return body_res;
+            if (body_res.isControlFlow()) {
+                switch (body_res) {
+                    .break_stmt => break,
+                    .continue_stmt => continue,
+                    .return_val => return body_res,
+                    else => unreachable,
                 }
             }
         }
@@ -211,20 +235,20 @@ pub const Interpreter = struct {
 
     fn visitLoopStatement(_: *Self, node: *const Node) EvalResult {
         return switch (node.*) {
-            .break_stmt => EvalResult.controlFlow(ControlFlow.Break),
-            .continue_stmt => EvalResult.controlFlow(ControlFlow.Continue),
+            .break_stmt => EvalResult.break_stmt,
+            .continue_stmt => EvalResult.continue_stmt,
             else => unreachable,
         };
     }
 
-    fn visitReturnStmt(self: *Self, node: *const ReturnStatement) EvalResult {
-        const res = self.visit(node.expr);
-        if (res.err == null) {
+    fn visitReturnStmt(self: *Self, node: *const ReturnStatement) !EvalResult {
+        const res = try self.visit(node.expr);
+        if (res.isError()) {
             return res;
         }
-        return EvalResult.controlFlow(ControlFlow.Return);
+        return EvalResult{ .return_val = res.value };
     }
-    fn visit(self: *Self, node: *const Node) EvalResult {
+    fn visit(self: *Self, node: *const Node) anyerror!EvalResult {
         dbg.printNodeUnion(node, @src());
         return switch (node.*) {
             .num => self.visitInteger(&node.num),
@@ -271,11 +295,11 @@ pub const Interpreter = struct {
         return computed;
     }
 
-    fn visitAssignment(self: *Self, binop: *const BinOp) EvalResult {
+    fn visitAssignment(self: *Self, binop: *const BinOp) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
         const locals_ptr = &last_item_ptr.*.symbols;
-        const rhs_result = self.visit(binop.rhs);
+        const rhs_result = try self.visit(binop.rhs);
         const id = binop.lhs.*.variable.id;
         if (locals_ptr.*.getPtr(id)) |val_ptr| {
             val_ptr.* = rhs_result;
@@ -291,14 +315,14 @@ pub const Interpreter = struct {
         return rhs_result;
     }
 
-    fn visitBinOp(self: *Self, binop: *const BinOp) EvalResult {
+    fn visitBinOp(self: *Self, binop: *const BinOp) anyerror!EvalResult {
         dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
         if (binop.token.type == TokenType.assign) {
             return self.visitAssignment(binop);
         }
 
-        const lhs_result = self.visit(binop.lhs);
-        const rhs_result = self.visit(binop.rhs);
+        const lhs_result = try self.visit(binop.lhs);
+        const rhs_result = try self.visit(binop.rhs);
         switch (lhs_result.value) {
             .integer => {
                 return EvalResult{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
@@ -307,10 +331,10 @@ pub const Interpreter = struct {
         }
     }
 
-    fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) EvalResult {
+    fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) anyerror!EvalResult {
         dbg.print("'{s}'\n", .{unaryop.token.lexeme.?}, @src());
-        var result = self.visit(unaryop.value);
-        if (result.err != null) {
+        var result = try self.visit(unaryop.value);
+        if (result.isError()) {
             return result;
         }
         if (unaryop.token.type == TokenType.minus) {
@@ -352,7 +376,8 @@ pub const Interpreter = struct {
         }
 
         try self.pushStackFrame();
-        _ = try self.visitStatements(global_statements);
+        const bl = try self.visitStatements(global_statements);
+        dbg.print("BLABLA{}BLABLA", .{bl}, @src());
         const stack_items = self.stack.items;
         dbg.print("stack_items len: {}\n", .{stack_items.len}, @src());
 
@@ -365,19 +390,20 @@ pub const Interpreter = struct {
         }
         try self.popStackFrame();
 
-        const result = self.return_val orelse EvalResult{ .value = .{ .void = {} } };
-        switch (result) {
-            .value => {
-                switch (result.value) {
-                    .void => return 0,
-                    .integer => return result.value.integer,
-                    .string => return 0,
-                    else => return 0,
-                }
-            },
-            .err => return 1,
-        }
-        return result.ret.integer;
+        // const result = self.return_val orelse EvalResult{ .value = .{ .void = {} } };
+        // switch (result) {
+        //     .value => {
+        //         switch (result.value) {
+        //             .void => return 0,
+        //             .integer => return result.value.integer,
+        //             .string => return 0,
+        //             else => return 0,
+        //         }
+        //     },
+        //     .err => return 1,
+        // }
+        // return result.ret.integer;
+        return 42;
     }
 };
 
