@@ -1,12 +1,13 @@
 
+z = 42;
 g();
-h();
 function g() {
     b = 43;
-    return 123;
+    return h();
 }
 function h() {
-    return 10;
+    c = 420;
+    return 123;
 }
 function main() {
     a = 43;

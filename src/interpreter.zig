@@ -137,6 +137,12 @@ pub const Interpreter = struct {
 
     fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
+        // FIXME: delete this shit
+        const state = struct {
+            var bar: usize = 0;
+        };
+        state.bar += 1;
+        dbg.print("STATE_BAR {}\n", .{state.bar}, @src());
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
             const res = try self.visit(stmt);
@@ -144,12 +150,6 @@ pub const Interpreter = struct {
                 return res;
             }
         }
-        // FIXME: delete this shit
-        const state = struct {
-            var bar: usize = 0;
-        };
-        state.bar += 1;
-        dbg.print("STATE_BAR {}\n", .{state.bar}, @src());
         return EvalResult.ok(.{ .void = {} });
     }
 
@@ -167,8 +167,11 @@ pub const Interpreter = struct {
         dbg.print("\n", .{}, @src());
         const id = func_call.id;
         if (self.global_funcs.get(id)) |func| {
+            try self.pushStackFrame();
             dbg.print("id: {s}, statements len: {}, {*} {*}\n", .{ func_call.id, func.statements.items.len, self.global_funcs.get(id), func.statements.getLast() }, @src());
-            return try self.visitStatements(func.statements);
+            const result = try self.visitStatements(func.statements);
+            try self.popStackFrame();
+            return result;
         } else {
             return EvalResult.failure(.{ .type = Error.FunctionIsNotDeclared, .msg = "" });
         }
@@ -246,6 +249,9 @@ pub const Interpreter = struct {
         if (res.isError()) {
             return res;
         }
+        if (res == .return_val) {
+            return res;
+        }
         return EvalResult{ .return_val = res.value };
     }
     fn visit(self: *Self, node: *const Node) anyerror!EvalResult {
@@ -298,6 +304,7 @@ pub const Interpreter = struct {
     fn visitAssignment(self: *Self, binop: *const BinOp) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
+        dbg.print("WTF {}\n", .{self.stack.items.len}, @src());
         const locals_ptr = &last_item_ptr.*.symbols;
         const rhs_result = try self.visit(binop.rhs);
         const id = binop.lhs.*.variable.id;
@@ -376,8 +383,8 @@ pub const Interpreter = struct {
         }
 
         try self.pushStackFrame();
-        const bl = try self.visitStatements(global_statements);
-        dbg.print("BLABLA{}BLABLA", .{bl}, @src());
+        const ret = try self.visitStatements(global_statements);
+        dbg.print("ret={}\n", .{ret}, @src());
         const stack_items = self.stack.items;
         dbg.print("stack_items len: {}\n", .{stack_items.len}, @src());
 
