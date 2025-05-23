@@ -67,8 +67,15 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
   - [x] While block
     - [x] Break statement
   - [ ] Floats
-  - [ ] Arrays subscripting
-  - [ ] Strings subscripting
+  - [ ] Arrays
+    - [ ] Array arithmetics
+    - [ ] Subscripting
+    - [ ] Slicing
+  - [ ] Strings
+    - [x] String declaration
+    - [ ] String arithmetics
+    - [ ] Subscripting
+    - [ ] Slicing
   - [ ] Structs
   - [ ] Panic
   - [ ] Exceptions (Index error)
@@ -84,6 +91,15 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
   - [x] Else block
   - [x] While block
     - [x] Break statement
+  - [ ] Strings
+    - [x] String declaration
+    - [ ] String arithmetics
+    - [ ] Subscripting
+    - [ ] Slicing
+  - [ ] Arrays
+    - [ ] Array arithmetics
+    - [ ] Subscripting
+    - [ ] Slicing
 
 ## Resources
 

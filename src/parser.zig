@@ -164,7 +164,6 @@ pub const Parser = struct {
                 }
             },
             .lparen => {
-                dbg.print("yo", .{}, @src());
                 try self.eat(TokenType.lparen);
                 node = try self.parseExpr();
                 try self.eat(TokenType.rparen);
@@ -172,9 +171,19 @@ pub const Parser = struct {
             .plus, .minus => {
                 try self.eat(token.type);
                 const value = try self.parseFactor();
-                node = try self.makeNode(Node{ .unaryop = AstNode.UnaryOp{ .token = token, .value = value } });
+                return try self.makeNode(.{ .unaryop = AstNode.UnaryOp{ .token = token, .value = value } });
+            },
+            .string => {
+                try self.eat(token.type);
+                if (token.lexeme.?.len == 0) {
+                    return try self.makeNode(.{ .string = try AstNode.String.initEmpty(token, self.arena.allocator()) });
+                } else {
+                    const lexeme = try token.getLexeme();
+                    return try self.makeNode(.{ .string = try AstNode.String.initFromSlice(token, lexeme, self.arena.allocator()) });
+                }
             },
             else => {
+                dbg.print("wtf", .{}, @src());
                 return Error.BadToken;
             },
         }

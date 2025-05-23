@@ -7,6 +7,8 @@ const FunctionDecl = @import("./ast_nodes.zig").FunctionDecl;
 const BinOp = @import("./ast_nodes.zig").BinOp;
 const UnaryOp = @import("./ast_nodes.zig").UnaryOp;
 const Num = @import("./ast_nodes.zig").Num;
+const Array = @import("./ast_nodes.zig").Array;
+const String = @import("./ast_nodes.zig").String;
 const Variable = @import("./ast_nodes.zig").Variable;
 const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
 const IfBlock = @import("./ast_nodes.zig").IfBlock;
@@ -21,7 +23,7 @@ const NotImplemented = error{NotImplemented}.NotImplemented;
 const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow };
 const ControlFlow = enum { Continue, Break, Return };
 const ValueType = enum { integer, float, string, array, void };
-const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
+const Value = union(enum) { integer: i64, float: f64, string: *String, array: []Value, void: void };
 const EvalResultErr = struct { type: Error, msg: []u8 };
 const EvalResult = union(enum) {
     const Self = @This();
@@ -114,6 +116,37 @@ pub const Interpreter = struct {
         };
     }
 
+    fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: EvalResult, rhs_result: EvalResult) !i64 {
+        dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
+        dbg.printNodeUnion(&Node{ .binop = binop.* }, @src());
+        dbg.print("{} {} {}\n", .{ lhs_result, binop.token.type, rhs_result }, @src());
+        if (lhs_result.value != Value.integer or rhs_result.value != Value.integer) {
+            return Error.WrongBinOpTypes;
+        }
+        const lhs_val = lhs_result.value.integer;
+        const rhs_val = rhs_result.value.integer;
+        dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
+        var computed: i64 = undefined;
+        switch (binop.token.type) {
+            TokenType.plus => computed = lhs_result.value.integer + rhs_result.value.integer,
+            TokenType.minus => computed = lhs_result.value.integer - rhs_result.value.integer,
+            TokenType.mul => computed = lhs_result.value.integer * rhs_result.value.integer,
+            TokenType.div => computed = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
+            TokenType.mod => computed = @mod(lhs_result.value.integer, rhs_result.value.integer),
+
+            TokenType.lt => computed = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
+            TokenType.le => computed = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
+            TokenType.eq => computed = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
+            TokenType.ge => computed = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
+            TokenType.gt => computed = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
+
+            else => return NotImplemented,
+        }
+        _ = self;
+        dbg.print("new_val == {}\n", .{computed}, @src());
+        return computed;
+    }
+
     // Stack
     pub fn pushStackFrame(self: *Self) !void {
         dbg.print("\n", .{}, @src());
@@ -139,10 +172,10 @@ pub const Interpreter = struct {
         dbg.print("\n", .{}, @src());
         // FIXME: delete this shit
         const state = struct {
-            var bar: usize = 0;
+            var i: usize = 0;
         };
-        state.bar += 1;
-        dbg.print("STATE_BAR {}\n", .{state.bar}, @src());
+        state.i += 1;
+        dbg.print("nth callstack: {}\n", .{state.i}, @src());
         for (statements.items) |stmt| {
             dbg.printNodeUnion(stmt, @src());
             const res = try self.visit(stmt);
@@ -168,7 +201,6 @@ pub const Interpreter = struct {
         const id = func_call.id;
         if (self.global_funcs.get(id)) |func| {
             try self.pushStackFrame();
-            dbg.print("id: {s}, statements len: {}, {*} {*}\n", .{ func_call.id, func.statements.items.len, self.global_funcs.get(id), func.statements.getLast() }, @src());
             const result = try self.visitStatements(func.statements);
             try self.popStackFrame();
             return switch (result) {
@@ -273,37 +305,6 @@ pub const Interpreter = struct {
         };
     }
 
-    fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: EvalResult, rhs_result: EvalResult) !i64 {
-        dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
-        dbg.printNodeUnion(&Node{ .binop = binop.* }, @src());
-        dbg.print("{} {} {}\n", .{ lhs_result, binop.token.type, rhs_result }, @src());
-        if (lhs_result.value != Value.integer or rhs_result.value != Value.integer) {
-            return Error.WrongBinOpTypes;
-        }
-        const lhs_val = lhs_result.value.integer;
-        const rhs_val = rhs_result.value.integer;
-        dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
-        var computed: i64 = undefined;
-        switch (binop.token.type) {
-            TokenType.plus => computed = lhs_result.value.integer + rhs_result.value.integer,
-            TokenType.minus => computed = lhs_result.value.integer - rhs_result.value.integer,
-            TokenType.mul => computed = lhs_result.value.integer * rhs_result.value.integer,
-            TokenType.div => computed = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
-            TokenType.mod => computed = @mod(lhs_result.value.integer, rhs_result.value.integer),
-
-            TokenType.lt => computed = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
-            TokenType.le => computed = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
-            TokenType.eq => computed = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
-            TokenType.ge => computed = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
-            TokenType.gt => computed = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
-
-            else => return NotImplemented,
-        }
-        _ = self;
-        dbg.print("new_val == {}\n", .{computed}, @src());
-        return computed;
-    }
-
     fn visitAssignment(self: *Self, binop: *const BinOp) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
@@ -330,11 +331,16 @@ pub const Interpreter = struct {
             return self.visitAssignment(binop);
         }
 
-        const lhs_result = try self.visit(binop.lhs);
-        const rhs_result = try self.visit(binop.rhs);
-        switch (lhs_result.value) {
+        const lhs_res = try self.visit(binop.lhs);
+        const lhs_val = try lhs_res.getValue();
+        const rhs_res = try self.visit(binop.rhs);
+        const rhs_val = try rhs_res.getValue();
+        dbg.print("{?}", .{lhs_val}, @src());
+        dbg.print("{?}", .{rhs_val}, @src());
+
+        switch (lhs_val) {
             .integer => {
-                return EvalResult{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
+                return EvalResult{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_res, rhs_res) } };
             },
             else => return NotImplemented, // NOTE: e.g. concat strings
         }
@@ -379,10 +385,6 @@ pub const Interpreter = struct {
 
         const global_statements = self.ast.global_statements;
         dbg.print("global_statements len: {}\n", .{global_statements.items.len}, @src());
-        if (global_statements.items.len == 0) {
-            dbg.print("No global statements\n", .{}, @src());
-            return 1;
-        }
 
         try self.pushStackFrame();
         const ret = try self.visitStatements(global_statements);
@@ -398,21 +400,14 @@ pub const Interpreter = struct {
             i += 1;
         }
         try self.popStackFrame();
-
-        // const result = self.return_val orelse EvalResult{ .value = .{ .void = {} } };
-        // switch (result) {
-        //     .value => {
-        //         switch (result.value) {
-        //             .void => return 0,
-        //             .integer => return result.value.integer,
-        //             .string => return 0,
-        //             else => return 0,
-        //         }
-        //     },
-        //     .err => return 1,
-        // }
-        // return result.ret.integer;
-        return 42;
+        return switch (ret) {
+            .return_val => return switch (ret.return_val) {
+                .integer => (ret.return_val.integer),
+                else => 0,
+            },
+            .err => 1,
+            else => 0,
+        };
     }
 };
 

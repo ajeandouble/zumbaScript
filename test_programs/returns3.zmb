@@ -1,0 +1,11 @@
+function h() {
+    return 1;
+}
+function main() {
+    return 2 + g();
+}
+function g() {
+    return 0 + h();
+}
+myvar = 7;
+return myVar * main() * (h() + h());
