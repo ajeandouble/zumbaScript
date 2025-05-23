@@ -24,7 +24,7 @@ pub inline fn printNodeUnion(object: *const Node, comptime src: std.builtin.Sour
         inline for (un.fields) |field| {
             if (std.mem.eql(u8, field.name, @tagName(object.*))) {
                 const field_value = @field(object, field.name);
-                inline for (@typeInfo(@TypeOf(field_value.*)).@"struct".fields) |fld| {
+                inline for (@typeInfo(@TypeOf(field_value)).@"struct".fields) |fld| {
                     if (std.mem.eql(u8, fld.name, "token")) {
                         const fld_val = @field(field_value, fld.name);
                         if (@TypeOf(fld_val) == Token) {
