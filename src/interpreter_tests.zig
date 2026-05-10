@@ -8,13 +8,12 @@ const Node = @import("./ast_nodes.zig").Node;
 const Num = @import("./ast_nodes.zig").Num;
 const Variable = @import("./ast_nodes.zig").Variable;
 const BinOp = @import("./ast_nodes.zig").BinOp;
-const Assign = @import("./ast_nodes.zig").Assign;
 const IfBlock = @import("./ast_nodes.zig").IfBlock;
 const ElseBlock = @import("./ast_nodes.zig").ElseBlock;
 const WhileBlock = @import("./ast_nodes.zig").WhileBlock;
 const BreakStatement = @import("./ast_nodes.zig").BreakStatement;
 const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
-const Return = @import("./ast_nodes.zig").Return;
+const ReturnStatement = @import("./ast_nodes.zig").ReturnStatement;
 const FunctionDecl = @import("./ast_nodes.zig").FunctionDecl;
 
 const expect = std.testing.expectEqual;
@@ -35,102 +34,81 @@ test "control flow: while, nested if break and nested else continue" {
     const break_tok = Token{ .type = TokenType.break_kw, .lexeme = "break", .line = 0, .allocator = allocator };
     const continue_tok = Token{ .type = TokenType.continue_kw, .lexeme = "continue", .line = 0, .allocator = allocator };
 
-    // Nodes
-    var id_i_var = Variable{ .id = "i", .token = id_i_tok };
-    var id_i = Node{ .variable = &id_i_var };
-
-    var num_0_obj = Num{ .value = 0, .token = num_0_tok };
-    var num_0 = Node{ .num = &num_0_obj };
-
-    var num_1_obj = Num{ .value = 1, .token = num_1_tok };
-    var num_1 = Node{ .num = &num_1_obj };
-
-    var num_42_obj = Num{ .value = 42, .token = num_42_tok };
-    var num_42 = Node{ .num = &num_42_obj };
+    // Nodes — Node union fields are values, not pointers
+    var id_i = Node{ .variable = Variable{ .id = "i", .token = id_i_tok } };
+    var num_0 = Node{ .num = Num{ .value = 0, .token = num_0_tok } };
+    var num_1 = Node{ .num = Num{ .value = 1, .token = num_1_tok } };
+    var num_42 = Node{ .num = Num{ .value = 42, .token = num_42_tok } };
 
     // Initial assignment: i = 0
-    var init_assign_obj = BinOp{ .lhs = &id_i, .rhs = &num_0, .token = assign_tok };
-    var init_assign = Node{ .binop = &init_assign_obj };
+    var init_assign = Node{ .binop = BinOp{ .lhs = &id_i, .rhs = &num_0, .token = assign_tok } };
 
     // Increment: i = i + 1
-    var plus_i_obj = BinOp{ .lhs = &id_i, .rhs = &num_1, .token = plus_tok };
-    var plus_i = Node{ .binop = &plus_i_obj };
-
-    var inc_i_obj = BinOp{ .lhs = &id_i, .rhs = &plus_i, .token = assign_tok };
-    var inc_i = Node{ .binop = &inc_i_obj };
+    var plus_i = Node{ .binop = BinOp{ .lhs = &id_i, .rhs = &num_1, .token = plus_tok } };
+    var inc_i = Node{ .binop = BinOp{ .lhs = &id_i, .rhs = &plus_i, .token = assign_tok } };
 
     // Condition: i < 42
-    var while_cond_obj = BinOp{ .lhs = &id_i, .rhs = &num_42, .token = lt_tok };
-    var while_cond = Node{ .binop = &while_cond_obj };
+    var while_cond = Node{ .binop = BinOp{ .lhs = &id_i, .rhs = &num_42, .token = lt_tok } };
 
     // Condition: i >= 42
-    var break_cond_obj = BinOp{ .lhs = &id_i, .rhs = &num_42, .token = ge_tok };
-    var break_cond = Node{ .binop = &break_cond_obj };
+    var break_cond = Node{ .binop = BinOp{ .lhs = &id_i, .rhs = &num_42, .token = ge_tok } };
 
-    // Break statement
-    var break_stmt_obj = BreakStatement{ .token = break_tok };
-    var break_stmt = Node{ .break_stmt = &break_stmt_obj };
-
-    // Continue statement
-    var continue_stmt_obj = ContinueStatement{ .token = continue_tok };
-    var continue_stmt = Node{ .continue_stmt = &continue_stmt_obj };
+    // Break / continue nodes
+    var break_stmt = Node{ .break_stmt = BreakStatement{ .token = break_tok } };
+    var continue_stmt = Node{ .continue_stmt = ContinueStatement{ .token = continue_tok } };
 
     // If block with break
-    var if_block_stmts = std.ArrayList(*Node).init(allocator);
-    try if_block_stmts.append(&break_stmt);
-    defer if_block_stmts.deinit();
+    var if_block_stmts = std.ArrayList(*Node){};
+    try if_block_stmts.append(allocator, &break_stmt);
+    defer if_block_stmts.deinit(allocator);
 
-    var if_block_obj = IfBlock{ .condition = &break_cond, .statements = if_block_stmts };
-    var if_block = Node{ .if_block = &if_block_obj };
+    var if_block = Node{ .if_block = IfBlock{ .condition = &break_cond, .statements = if_block_stmts } };
 
-    // Else block with continue and increment
-    var else_block_stmts = std.ArrayList(*Node).init(allocator);
-    try else_block_stmts.append(&inc_i);
-    try else_block_stmts.append(&continue_stmt);
-    defer else_block_stmts.deinit();
+    // Else block with increment + continue
+    var else_block_stmts = std.ArrayList(*Node){};
+    try else_block_stmts.append(allocator, &inc_i);
+    try else_block_stmts.append(allocator, &continue_stmt);
+    defer else_block_stmts.deinit(allocator);
 
     var else_block_obj = ElseBlock{ .condition = null, .statements = else_block_stmts };
 
-    // Connect if and else blocks
+    // Connect if → else
     if_block.if_block.next_else = &else_block_obj;
 
-    // While block statements
-    var while_block_stmts = std.ArrayList(*Node).init(allocator);
-    try while_block_stmts.append(&if_block);
-    defer while_block_stmts.deinit();
-
     // While block
-    var while_block_obj = WhileBlock{ .condition = &while_cond, .statements = while_block_stmts };
-    var while_block = Node{ .while_block = &while_block_obj };
+    var while_block_stmts = std.ArrayList(*Node){};
+    try while_block_stmts.append(allocator, &if_block);
+    defer while_block_stmts.deinit(allocator);
+
+    var while_block = Node{ .while_block = WhileBlock{ .condition = &while_cond, .statements = while_block_stmts } };
 
     // Main function statements
-    var main_stmts = std.ArrayList(*Node).init(allocator);
-    try main_stmts.append(&init_assign);
-    try main_stmts.append(&while_block);
-    defer main_stmts.deinit();
+    var main_stmts = std.ArrayList(*Node){};
+    try main_stmts.append(allocator, &init_assign);
+    try main_stmts.append(allocator, &while_block);
+    defer main_stmts.deinit(allocator);
 
-    // Return node for main function
-    var return_obj = Return{ .expr = &id_i };
-    var return_node = Node{ .ret = &return_obj };
-    try main_stmts.append(&return_node);
+    var return_node = Node{ .ret = ReturnStatement{ .expr = &id_i } };
+    try main_stmts.append(allocator, &return_node);
 
     // Main function declaration
-    var main_args = std.ArrayList(*Node).init(allocator);
-    defer main_args.deinit();
+    var main_args = std.ArrayList(*Node){};
+    defer main_args.deinit(allocator);
 
-    var main_func_obj = FunctionDecl{ .id = "main", .args = main_args, .statements = main_stmts };
-    var main_func = Node{ .func_decl = &main_func_obj };
+    var main_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = main_args, .statements = main_stmts } };
 
-    var functions = std.ArrayList(*Node).init(allocator);
-    try functions.append(&main_func);
-    // Program setup
+    var functions = std.ArrayList(*Node){};
+    try functions.append(allocator, &main_func);
+    defer functions.deinit(allocator);
+
+    var global_statements = std.ArrayList(*Node){};
+    defer global_statements.deinit(allocator);
+
     var dummyAST = Program{
         .id = "",
         .functions = functions,
-        .global_statements = std.ArrayList(*Node).init(allocator),
+        .global_statements = global_statements,
     };
-    defer functions.deinit();
-    defer dummyAST.global_statements.deinit();
 
     var interp = try Interpreter.init(&dummyAST, allocator);
     defer interp.deinit();

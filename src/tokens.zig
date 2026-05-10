@@ -41,8 +41,14 @@ pub const TokenType = enum {
     le,
     lt,
     eq,
+    ne,
     ge,
     gt,
+
+    // Logical operators
+    and_op,
+    or_op,
+    not_op,
 
     // Value associated token
     string,

@@ -5,6 +5,7 @@ const TokenType = @import("./tokens.zig").TokenType;
 const reserved = @import("./lex_constants.zig").reserved;
 const op_math = @import("./lex_constants.zig").math;
 const op_cmp = @import("./lex_constants.zig").cmp;
+const op_logical = @import("./lex_constants.zig").logical;
 const op_assign = @import("./lex_constants.zig").assign;
 const delimeters = @import("./lex_constants.zig").delimeters;
 const separators = @import("./lex_constants.zig").separators;
@@ -39,13 +40,17 @@ const single_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
     .{ delimeters.rbrack, TokenType.rbrack },
     .{ separators.comma, TokenType.comma },
     .{ separators.semi, TokenType.semi },
+    .{ op_logical.not_op, TokenType.not_op },
     .{ "\n", TokenType.eol },
 });
 
 const mult_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
     .{ "==", TokenType.eq },
+    .{ "!=", TokenType.ne },
     .{ "<=", TokenType.le },
     .{ ">=", TokenType.ge },
+    .{ "&&", TokenType.and_op },
+    .{ "||", TokenType.or_op },
 });
 
 const whitespaces_no_nl = std.StaticStringMap(undefined).initComptime(.{
@@ -63,7 +68,7 @@ pub const Lexer: type = struct {
     tokens: ?std.ArrayList(Token),
 
     pub fn init(buffer: []const u8, allocator: std.mem.Allocator) !Self {
-        const tokens = std.ArrayList(Token).init(allocator);
+        const tokens = std.ArrayList(Token){};
         const lexer = Self{ .allocator = allocator, .source = buffer, .tokens = tokens };
         return lexer;
     }
@@ -73,18 +78,18 @@ pub const Lexer: type = struct {
             tok.deinit();
             tok.lexeme = null;
         }
-        self.tokens.?.deinit();
+        self.tokens.?.deinit(self.allocator);
         self.tokens = null;
     }
 
     pub fn tokenize(self: *Self) !void {
         if (self.tokens) |*tokens| {
             var next_tok = try self.nextToken();
-            try tokens.append(next_tok);
+            try tokens.append(self.allocator, next_tok);
             while (next_tok.type != TokenType.eof) {
                 dbg.print("{}: '{s}' L:{}\n", .{ next_tok.type, next_tok.lexeme.?, next_tok.line }, @src());
                 next_tok = try self.nextToken();
-                try tokens.*.append(next_tok);
+                try tokens.*.append(self.allocator, next_tok);
             }
         } else {
             return Error.NullTokens;

@@ -98,7 +98,7 @@ pub const Interpreter = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.stack.deinit();
+        self.stack.deinit(self.allocator);
         var it_funcs = self.global_funcs.iterator();
         while (it_funcs.next()) |item| {
             self.allocator.free(item.key_ptr.*);
@@ -137,6 +137,7 @@ pub const Interpreter = struct {
             TokenType.lt => computed = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
             TokenType.le => computed = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
             TokenType.eq => computed = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
+            TokenType.ne => computed = @intFromBool(lhs_result.value.integer != rhs_result.value.integer),
             TokenType.ge => computed = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
             TokenType.gt => computed = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
 
@@ -151,7 +152,7 @@ pub const Interpreter = struct {
     pub fn pushStackFrame(self: *Self) !void {
         dbg.print("\n", .{}, @src());
         const frame = try StackFrame.init(self.allocator);
-        try self.stack.append(frame);
+        try self.stack.append(self.allocator, frame);
         dbg.print("Stack: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
     }
 
@@ -331,12 +332,30 @@ pub const Interpreter = struct {
             return self.visitAssignment(binop);
         }
 
+        // Short-circuit logical operators
+        if (binop.token.type == TokenType.and_op) {
+            const lhs_res = try self.visit(binop.lhs);
+            const lhs_val = try lhs_res.getValue();
+            if (!try isTruethy(lhs_val)) return EvalResult.ok(.{ .integer = 0 });
+            const rhs_res = try self.visit(binop.rhs);
+            const rhs_val = try rhs_res.getValue();
+            return EvalResult.ok(.{ .integer = @intFromBool(try isTruethy(rhs_val)) });
+        }
+        if (binop.token.type == TokenType.or_op) {
+            const lhs_res = try self.visit(binop.lhs);
+            const lhs_val = try lhs_res.getValue();
+            if (try isTruethy(lhs_val)) return EvalResult.ok(.{ .integer = 1 });
+            const rhs_res = try self.visit(binop.rhs);
+            const rhs_val = try rhs_res.getValue();
+            return EvalResult.ok(.{ .integer = @intFromBool(try isTruethy(rhs_val)) });
+        }
+
         const lhs_res = try self.visit(binop.lhs);
         const lhs_val = try lhs_res.getValue();
         const rhs_res = try self.visit(binop.rhs);
         const rhs_val = try rhs_res.getValue();
-        dbg.print("{?}", .{lhs_val}, @src());
-        dbg.print("{?}", .{rhs_val}, @src());
+        dbg.print("{}", .{lhs_val}, @src());
+        dbg.print("{}", .{rhs_val}, @src());
 
         switch (lhs_val) {
             .integer => {
@@ -352,8 +371,10 @@ pub const Interpreter = struct {
         if (result.isError()) {
             return result;
         }
-        if (unaryop.token.type == TokenType.minus) {
-            result.value.integer = -result.value.integer;
+        switch (unaryop.token.type) {
+            TokenType.minus => result.value.integer = -result.value.integer,
+            TokenType.not_op => result.value.integer = @intFromBool(result.value.integer == 0),
+            else => {},
         }
         return result;
     }
@@ -400,9 +421,25 @@ pub const Interpreter = struct {
             i += 1;
         }
         try self.popStackFrame();
+        if (ret.isError()) return 1;
+
+        if (self.global_funcs.get("main")) |main_func| {
+            try self.pushStackFrame();
+            const main_ret = try self.visitStatements(main_func.statements);
+            try self.popStackFrame();
+            return switch (main_ret) {
+                .return_val => switch (main_ret.return_val) {
+                    .integer => main_ret.return_val.integer,
+                    else => 0,
+                },
+                .err => 1,
+                else => 0,
+            };
+        }
+
         return switch (ret) {
-            .return_val => return switch (ret.return_val) {
-                .integer => (ret.return_val.integer),
+            .return_val => switch (ret.return_val) {
+                .integer => ret.return_val.integer,
                 else => 0,
             },
             .err => 1,
@@ -416,17 +453,17 @@ const expectEqual = std.testing.expectEqual;
 test "visitInteger should correctly return the integer value" {
     var dummyAST = Program{
         .id = "",
-        .functions = std.ArrayList(*Node).init(std.testing.allocator),
-        .global_statements = std.ArrayList(*Node).init(std.testing.allocator),
+        .functions = std.ArrayList(*Node){},
+        .global_statements = std.ArrayList(*Node){},
     };
 
-    defer dummyAST.functions.deinit();
-    defer dummyAST.global_statements.deinit();
+    defer dummyAST.functions.deinit(std.testing.allocator);
+    defer dummyAST.global_statements.deinit(std.testing.allocator);
 
     var interp = try Interpreter.init(&dummyAST, std.testing.allocator);
     defer interp.deinit();
 
     const dummyToken = Token{ .lexeme = "", .allocator = undefined, .type = TokenType.eof, .line = 0 };
     var num = Num{ .token = dummyToken, .value = 42 };
-    try expectEqual(42, interp.visitInteger(&num));
+    try expectEqual(@as(i64, 42), interp.visitInteger(&num).value.integer);
 }

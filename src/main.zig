@@ -16,8 +16,8 @@ fn parseArgs(args: [][:0]u8) !void {
             dbg.verbose = true;
             i += 1;
         } else {
-            const stderr = std.io.getStdErr().writer();
-            try stderr.print("Wrong argument {s}", .{arg});
+            _ = std.fs.File.stderr().writeAll("Wrong argument: ") catch {};
+            _ = std.fs.File.stderr().writeAll(arg) catch {};
             return error{WrongArgument}.WrongArgument;
         }
     }
@@ -31,9 +31,10 @@ pub fn main() !u8 {
     try parseArgs(args);
     defer std.process.argsFree(allocator, args);
 
-    const stdin = std.io.getStdIn().reader();
-    const input_stdin = try stdin.readAllAlloc(allocator, MAX_STDIN_SIZE);
-    defer allocator.free(input_stdin);
+    const input_buf = try allocator.alloc(u8, MAX_STDIN_SIZE);
+    defer allocator.free(input_buf);
+    const bytes_read = try std.fs.File.stdin().readAll(input_buf);
+    const input_stdin = input_buf[0..bytes_read];
 
     var lexer = Lexer.init(input_stdin, allocator) catch |err| {
         dbg.print("Error tokenizing buffer {}", .{err}, @src());

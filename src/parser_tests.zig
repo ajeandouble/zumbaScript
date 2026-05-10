@@ -214,30 +214,30 @@ test "parseExpr - arithmetic, parentheses, variable, comparison" {
     const num_1 = ast.binop.lhs.*.num;
     try std.testing.expectEqual(num_1.value, 1);
 
-    // 1 + ( a [>] 9 == 3 )
+    // 1 + ( (a > 9) [==] 3 )  — comparisons are left-associative
     try std.testing.expect(isBinOp(ast.binop.rhs));
-    const binop_gt = ast.binop.rhs.*.binop;
+    const binop_eq = ast.binop.rhs.*.binop;
+    try std.testing.expectEqual(binop_eq.token.type, TokenType.eq);
+
+    // 1 + ( [a > 9] == 3 )
+    try std.testing.expect(isBinOp(binop_eq.lhs));
+    const binop_gt = binop_eq.lhs.*.binop;
     try std.testing.expectEqual(binop_gt.token.type, TokenType.gt);
 
     // 1 + ( [a] > 9 == 3 )
-    try std.testing.expect(isVariable((binop_gt.lhs)));
+    try std.testing.expect(isVariable(binop_gt.lhs));
     const var_a = binop_gt.lhs.*.variable;
     try std.testing.expectEqual(var_a.token.type, TokenType.id);
     try std.testing.expectEqualStrings(var_a.id, "a");
 
-    // 1 + ( a > 9 [==] 3 )
-    try std.testing.expect(isBinOp((binop_gt.rhs)));
-    const binop_eq = binop_gt.rhs.*.binop;
-    try std.testing.expectEqual(binop_eq.token.type, TokenType.eq);
-
     // 1 + ( a > [9] == 3 )
-    try std.testing.expect(isNum((binop_eq.lhs)));
-    const num_9 = binop_eq.lhs.*.num;
+    try std.testing.expect(isNum(binop_gt.rhs));
+    const num_9 = binop_gt.rhs.*.num;
     try std.testing.expectEqual(num_9.token.type, TokenType.integer);
     try std.testing.expectEqual(num_9.value, 9);
 
     // 1 + ( a > 9 == [3] )
-    try std.testing.expect(isNum((binop_eq.rhs)));
+    try std.testing.expect(isNum(binop_eq.rhs));
     const num_3 = binop_eq.rhs.*.num;
     try std.testing.expectEqual(num_3.token.type, TokenType.integer);
     try std.testing.expectEqual(num_3.value, 3);
@@ -312,8 +312,8 @@ test "parseExpr - function call - 1 arg" {
     try std.testing.expect(isFuncCall(ast));
     try std.testing.expectEqualStrings(ast.func_call.id, "a");
 
-    try std.testing.expect(isVariable(ast.func_call.*.args.items[0]));
-    const expr_b = ast.func_call.*.args.items[0].*.variable;
+    try std.testing.expect(isVariable(ast.func_call.args.items[0]));
+    const expr_b = ast.func_call.args.items[0].*.variable;
     try std.testing.expectEqual(expr_b.token.type, TokenType.id);
     try std.testing.expectEqualStrings(expr_b.token.lexeme.?, "b");
     try std.testing.expectEqualStrings(expr_b.id, "b");
@@ -334,14 +334,14 @@ test "parseExpr - function call - 2 args" {
     try std.testing.expect(isFuncCall(ast));
     try std.testing.expectEqualStrings(ast.func_call.id, "a");
 
-    try std.testing.expect(isVariable(ast.func_call.*.args.items[0]));
-    const expr_b = ast.func_call.*.args.items[0].*.variable;
+    try std.testing.expect(isVariable(ast.func_call.args.items[0]));
+    const expr_b = ast.func_call.args.items[0].*.variable;
     try std.testing.expectEqual(expr_b.token.type, TokenType.id);
     try std.testing.expectEqualStrings(expr_b.token.lexeme.?, "b");
     try std.testing.expectEqualStrings(expr_b.id, "b");
 
-    try std.testing.expect(isVariable(ast.func_call.*.args.items[1]));
-    const expr_c = ast.func_call.*.args.items[1].*.variable;
+    try std.testing.expect(isVariable(ast.func_call.args.items[1]));
+    const expr_c = ast.func_call.args.items[1].*.variable;
     try std.testing.expectEqual(expr_c.token.type, TokenType.id);
     try std.testing.expectEqualStrings(expr_c.token.lexeme.?, "c");
     try std.testing.expectEqualStrings(expr_c.id, "c");
@@ -363,15 +363,15 @@ test "parseCompoundStatement - function call - 2 args - 2 exprs" {
     const ast = try parser.parseCompoundStatement();
 
     try std.testing.expect(isBinOp(ast.items[0]));
-    const statement_1 = ast.items[0].binop.*;
+    const statement_1 = ast.items[0].binop;
     try std.testing.expectEqual(statement_1.token.type, TokenType.assign);
 
     try std.testing.expect(isVariable(statement_1.lhs));
-    const var_a = statement_1.lhs.variable.*;
+    const var_a = statement_1.lhs.variable;
     try std.testing.expectEqualStrings(var_a.id, "a");
 
     try std.testing.expect(isVariable(statement_1.rhs));
-    const var_b = statement_1.rhs.variable.*;
+    const var_b = statement_1.rhs.variable;
     try std.testing.expectEqualStrings(var_b.id, "b");
 }
 
