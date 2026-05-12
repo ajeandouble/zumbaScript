@@ -192,6 +192,41 @@ function main() {
 
 ---
 
+## Type system
+
+Zumbascript is dynamically typed. Every value is one of: `integer`, `float`, `string`, `array`, or `void`.
+
+### Truthiness (used by `if`, `while`, `!`, `&&`, `||`)
+
+| Type      | Falsy when       | Truthy when    |
+| --------- | ---------------- | -------------- |
+| `integer` | `== 0`           | `!= 0`         |
+| `float`   | `== 0.0`         | `!= 0.0`       |
+| `string`  | `""` (empty)     | any non-empty  |
+| `array`   | `[]` (empty)     | any non-empty  |
+| `void`    | always falsy     | —              |
+
+### Binary operator type rules
+
+| Left    | Right   | `+` `-` `*` `/` `%` | `< <= >= >` | `==` `!=`             |
+| ------- | ------- | -------------------- | ----------- | --------------------- |
+| integer | integer | integer              | integer 0/1 | integer 0/1           |
+| integer | float   | float (int promoted) | integer 0/1 | integer 0/1           |
+| float   | integer | float (int promoted) | integer 0/1 | integer 0/1           |
+| float   | float   | float (`%` → error)  | integer 0/1 | integer 0/1           |
+| string  | string  | error (Step 01: `+`) | error       | integer 0/1 (content) |
+| void    | void    | error                | error       | always `0` (`==`)     |
+| mixed   | —       | error                | error       | error                 |
+
+### Unary operators
+
+| Operator | integer      | float       | other |
+| -------- | ------------ | ----------- | ----- |
+| `-`      | negated int  | negated f64 | error |
+| `!`      | `@intFromBool(!truthy)` on any type — always returns integer 0 or 1 |
+
+---
+
 ## Operator precedence (high → low)
 
 | Level | Operators                       | Associativity |

@@ -67,6 +67,9 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
   - [x] While block
     - [x] Break statement
     - [x] Continue statement
+  - [x] Integer arithmetic (`+` `-` `*` `/` `%`)
+  - [x] Comparison operators (`<` `<=` `==` `!=` `>=` `>`)
+  - [x] Logical operators (`&&` `||` `!`)
   - [ ] Floats
   - [ ] Arrays
     - [ ] Array arithmetics
@@ -84,6 +87,9 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
 - [x] Interpreter
   - [x] Global statements
   - [x] Expressions
+  - [x] Integer arithmetic (`+` `-` `*` `/` `%`)
+  - [x] Comparison operators (`<` `<=` `==` `!=` `>=` `>`)
+  - [x] Logical operators (`&&` `||` `!`) with short-circuit evaluation
   - [x] Functions
   - [x] Global hoisted declarations
   - [x] Calls
@@ -92,9 +98,17 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
   - [x] Else block
   - [x] While block
     - [x] Break statement
+    - [x] Continue statement
+  - [x] Typing rules (Step 00)
+    - [x] Truthiness for all types (integer, float, string, array, void)
+    - [x] Unified binary op dispatch (int/float/string/void)
+    - [x] String equality (`==` / `!=`)
+    - [x] Int/float promotion
+    - [x] Unary `-` and `!` for all types
   - [ ] Strings
     - [x] String declaration
-    - [ ] String arithmetics
+    - [x] String equality
+    - [ ] String arithmetics (concatenation)
     - [ ] Subscripting
     - [ ] Slicing
   - [ ] Arrays

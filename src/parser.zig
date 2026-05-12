@@ -196,7 +196,7 @@ pub const Parser = struct {
         var node = try self.parseFactor();
 
         var current_token = try self.current() orelse return node;
-        while (current_token.type == TokenType.mul or current_token.type == TokenType.div) {
+        while (current_token.type == TokenType.mul or current_token.type == TokenType.div or current_token.type == TokenType.mod) {
             dbg.print("{} \"{s}\"\n", .{ current_token.type, try current_token.getLexeme() }, @src());
             try self.eat(current_token.type);
             const rhs = try self.parseFactor();

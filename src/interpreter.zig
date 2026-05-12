@@ -106,49 +106,87 @@ pub const Interpreter = struct {
         self.global_funcs.deinit();
     }
 
-    // Helpers
-
     pub inline fn isTruethy(value: Value) !bool {
         return switch (value) {
-            .integer => value.integer != 0,
-            .string => Error.InvalidConditionType, // TODO: implement on strings
-            else => Error.InvalidConditionType,
+            .integer => |i| i != 0,
+            .float   => |f| f != 0.0,
+            .string  => |s| s.value.len > 0,
+            .array   => |a| a.len > 0,
+            .void    => false,
         };
     }
 
-    fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: EvalResult, rhs_result: EvalResult) !i64 {
-        dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
-        dbg.printNodeUnion(&Node{ .binop = binop.* }, @src());
-        dbg.print("{} {} {}\n", .{ lhs_result, binop.token.type, rhs_result }, @src());
-        if (lhs_result.value != Value.integer or rhs_result.value != Value.integer) {
-            return Error.WrongBinOpTypes;
+    fn computeBinOp(_: *Self, op: TokenType, lhs: Value, rhs: Value) !Value {
+        if (lhs == .void or rhs == .void) {
+            return switch (op) {
+                .eq => .{ .integer = 0 },
+                .ne => .{ .integer = 1 },
+                else => Error.MismatchingBinOpTypes,
+            };
         }
-        const lhs_val = lhs_result.value.integer;
-        const rhs_val = rhs_result.value.integer;
-        dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
-        var computed: i64 = undefined;
-        switch (binop.token.type) {
-            TokenType.plus => computed = lhs_result.value.integer + rhs_result.value.integer,
-            TokenType.minus => computed = lhs_result.value.integer - rhs_result.value.integer,
-            TokenType.mul => computed = lhs_result.value.integer * rhs_result.value.integer,
-            TokenType.div => computed = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
-            TokenType.mod => computed = @mod(lhs_result.value.integer, rhs_result.value.integer),
 
-            TokenType.lt => computed = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
-            TokenType.le => computed = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
-            TokenType.eq => computed = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
-            TokenType.ne => computed = @intFromBool(lhs_result.value.integer != rhs_result.value.integer),
-            TokenType.ge => computed = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
-            TokenType.gt => computed = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
-
-            else => return NotImplemented,
+        if (lhs == .string and rhs == .string) {
+            const equal = std.mem.eql(u8, lhs.string.value, rhs.string.value);
+            return switch (op) {
+                .eq => .{ .integer = @intFromBool(equal) },
+                .ne => .{ .integer = @intFromBool(!equal) },
+                else => Error.MismatchingBinOpTypes,
+            };
         }
-        _ = self;
-        dbg.print("new_val == {}\n", .{computed}, @src());
-        return computed;
+
+        if (lhs == .array and rhs == .array) {
+            return Error.InvalidConditionType;
+        }
+
+        const lhs_is_num = lhs == .integer or lhs == .float;
+        const rhs_is_num = rhs == .integer or rhs == .float;
+        if (!lhs_is_num or !rhs_is_num) return Error.MismatchingBinOpTypes;
+
+        if (lhs == .integer and rhs == .integer) {
+            const l = lhs.integer;
+            const r = rhs.integer;
+            return switch (op) {
+                .plus  => .{ .integer = l + r },
+                .minus => .{ .integer = l - r },
+                .mul   => .{ .integer = l * r },
+                .div   => .{ .integer = @divTrunc(l, r) },
+                .mod   => .{ .integer = @mod(l, r) },
+                .lt    => .{ .integer = @intFromBool(l < r) },
+                .le    => .{ .integer = @intFromBool(l <= r) },
+                .eq    => .{ .integer = @intFromBool(l == r) },
+                .ne    => .{ .integer = @intFromBool(l != r) },
+                .ge    => .{ .integer = @intFromBool(l >= r) },
+                .gt    => .{ .integer = @intFromBool(l > r) },
+                else   => Error.NotImplemented,
+            };
+        }
+
+        const l: f64 = switch (lhs) {
+            .integer => |i| @floatFromInt(i),
+            .float   => |f| f,
+            else     => unreachable,
+        };
+        const r: f64 = switch (rhs) {
+            .integer => |i| @floatFromInt(i),
+            .float   => |f| f,
+            else     => unreachable,
+        };
+        return switch (op) {
+            .plus  => .{ .float = l + r },
+            .minus => .{ .float = l - r },
+            .mul   => .{ .float = l * r },
+            .div   => .{ .float = l / r },
+            .mod   => Error.MismatchingBinOpTypes,
+            .lt    => .{ .integer = @intFromBool(l < r) },
+            .le    => .{ .integer = @intFromBool(l <= r) },
+            .eq    => .{ .integer = @intFromBool(l == r) },
+            .ne    => .{ .integer = @intFromBool(l != r) },
+            .ge    => .{ .integer = @intFromBool(l >= r) },
+            .gt    => .{ .integer = @intFromBool(l > r) },
+            else   => Error.NotImplemented,
+        };
     }
 
-    // Stack
     pub fn pushStackFrame(self: *Self) !void {
         dbg.print("\n", .{}, @src());
         const frame = try StackFrame.init(self.allocator);
@@ -163,15 +201,17 @@ pub const Interpreter = struct {
         _ = self.stack.pop();
     }
 
-    // Node visiting
     fn visitInteger(_: *Self, node: *const Num) EvalResult {
         dbg.print("{}\n", .{node.value}, @src());
         return EvalResult.ok(Value{ .integer = node.value });
     }
 
+    fn visitString(_: *Self, node: *const String) EvalResult {
+        return EvalResult.ok(Value{ .string = @constCast(node) });
+    }
+
     fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
-        // FIXME: delete this shit
         const state = struct {
             var i: usize = 0;
         };
@@ -213,7 +253,6 @@ pub const Interpreter = struct {
         }
     }
 
-    // TODO: add a isTruethy function
     fn visitIfBlock(self: *Self, if_block: *const IfBlock) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const cond_res = try self.visit(if_block.condition);
@@ -294,6 +333,7 @@ pub const Interpreter = struct {
         dbg.printNodeUnion(node, @src());
         return switch (node.*) {
             .num => self.visitInteger(&node.num),
+            .string => self.visitString(&node.string),
             .binop => self.visitBinOp(&node.binop),
             .unaryop => self.visitUnaryOp(&node.unaryop),
             .variable => self.visitVariable(&node.variable),
@@ -301,8 +341,8 @@ pub const Interpreter = struct {
             .if_block => self.visitIfBlock(&node.if_block),
             .while_block => self.visitWhileBlock(&node.while_block),
             .break_stmt, .continue_stmt => self.visitLoopStatement(node),
-            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
             .ret => self.visitReturnStmt(&node.ret),
+            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
         };
     }
 
@@ -332,7 +372,6 @@ pub const Interpreter = struct {
             return self.visitAssignment(binop);
         }
 
-        // Short-circuit logical operators
         if (binop.token.type == TokenType.and_op) {
             const lhs_res = try self.visit(binop.lhs);
             const lhs_val = try lhs_res.getValue();
@@ -357,33 +396,26 @@ pub const Interpreter = struct {
         dbg.print("{}", .{lhs_val}, @src());
         dbg.print("{}", .{rhs_val}, @src());
 
-        switch (lhs_val) {
-            .integer => {
-                return EvalResult{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_res, rhs_res) } };
-            },
-            else => return NotImplemented, // NOTE: e.g. concat strings
-        }
+        const result_val = try self.computeBinOp(binop.token.type, lhs_val, rhs_val);
+        return EvalResult.ok(result_val);
     }
 
     fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) anyerror!EvalResult {
         dbg.print("'{s}'\n", .{unaryop.token.lexeme.?}, @src());
-        var result = try self.visit(unaryop.value);
-        if (result.isError()) {
-            return result;
-        }
-        switch (unaryop.token.type) {
-            TokenType.minus => result.value.integer = -result.value.integer,
-            TokenType.not_op => result.value.integer = @intFromBool(result.value.integer == 0),
-            else => {},
-        }
-        return result;
+        const result = try self.visit(unaryop.value);
+        if (result.isError()) return result;
+        const val = try result.getValue();
+        return switch (unaryop.token.type) {
+            .minus => switch (val) {
+                .integer => |i| EvalResult.ok(.{ .integer = -i }),
+                .float   => |f| EvalResult.ok(.{ .float = -f }),
+                else     => EvalResult.failure(.{ .type = Error.MismatchingBinOpTypes, .msg = "" }),
+            },
+            .not_op => EvalResult.ok(.{ .integer = @intFromBool(!try isTruethy(val)) }),
+            else => result,
+        };
     }
 
-    // pub fn visitGlobalStatements() {
-    // }
-
-    // TODO: fix return values propagation
-    // TODO: add array declaration
     pub fn interpret(self: *Self) !i64 {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
@@ -393,7 +425,6 @@ pub const Interpreter = struct {
             switch (func.*) {
                 .func_decl => {
                     const id = func.func_decl.id;
-                    // dbg.print("Function id: {s}, addr:{*} {}\n", .{ id, &(func.func_decl.statements.items), func.func_decl.statements.items.len }, @src());
                     if (self.global_funcs.contains(id)) {
                         return Error.DuplicateFunctionDeclaration;
                     }
@@ -448,7 +479,6 @@ pub const Interpreter = struct {
     }
 };
 
-// Tests that need access to private methods
 const expectEqual = std.testing.expectEqual;
 test "visitInteger should correctly return the integer value" {
     var dummyAST = Program{
