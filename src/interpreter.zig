@@ -16,11 +16,12 @@ const WhileBlock = @import("./ast_nodes.zig").WhileBlock;
 const BreakStatement = @import("./ast_nodes.zig").BreakStatement;
 const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
 const ReturnStatement = @import("./ast_nodes.zig").ReturnStatement;
+const Subscript = @import("./ast_nodes.zig").Subscript;
 const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
-const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow };
+const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow, IndexOutOfBounds };
 const ControlFlow = enum { Continue, Break, Return };
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: *String, array: []Value, void: void };
@@ -89,12 +90,14 @@ pub const Interpreter = struct {
     allocator: std.mem.Allocator,
     stack: std.ArrayList(StackFrame),
     global_funcs: std.StringHashMap(*const FunctionDecl),
+    owned_strings: std.ArrayList(*String),
     ast: *const Program = undefined,
 
     pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
         const stack = try std.ArrayList(StackFrame).initCapacity(allocator, 1024);
         const global_funcs = std.StringHashMap(*const FunctionDecl).init(allocator);
-        return Self{ .allocator = allocator, .ast = ast, .stack = stack, .global_funcs = global_funcs };
+        const owned_strings = std.ArrayList(*String){};
+        return Self{ .allocator = allocator, .ast = ast, .stack = stack, .global_funcs = global_funcs, .owned_strings = owned_strings };
     }
 
     pub fn deinit(self: *Self) void {
@@ -104,6 +107,11 @@ pub const Interpreter = struct {
             self.allocator.free(item.key_ptr.*);
         }
         self.global_funcs.deinit();
+        for (self.owned_strings.items) |s| {
+            s.deinit();
+            self.allocator.destroy(s);
+        }
+        self.owned_strings.deinit(self.allocator);
     }
 
     pub inline fn isTruethy(value: Value) !bool {
@@ -116,7 +124,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn computeBinOp(_: *Self, op: TokenType, lhs: Value, rhs: Value) !Value {
+    fn computeBinOp(self: *Self, op: TokenType, lhs: Value, rhs: Value) !Value {
         if (lhs == .void or rhs == .void) {
             return switch (op) {
                 .eq => .{ .integer = 0 },
@@ -126,6 +134,17 @@ pub const Interpreter = struct {
         }
 
         if (lhs == .string and rhs == .string) {
+            if (op == .plus) {
+                const l = lhs.string.value;
+                const r = rhs.string.value;
+                const buf = try self.allocator.alloc(u8, l.len + r.len);
+                @memcpy(buf[0..l.len], l);
+                @memcpy(buf[l.len..], r);
+                const s = try self.allocator.create(String);
+                s.* = String{ .token = lhs.string.token, .value = buf, .allocator = self.allocator };
+                try self.owned_strings.append(self.allocator, s);
+                return .{ .string = s };
+            }
             const equal = std.mem.eql(u8, lhs.string.value, rhs.string.value);
             return switch (op) {
                 .eq => .{ .integer = @intFromBool(equal) },
@@ -208,6 +227,27 @@ pub const Interpreter = struct {
 
     fn visitString(_: *Self, node: *const String) EvalResult {
         return EvalResult.ok(Value{ .string = @constCast(node) });
+    }
+
+    fn visitSubscript(self: *Self, node: *const Subscript) anyerror!EvalResult {
+        const target_res = try self.visit(node.target);
+        if (target_res.isError()) return target_res;
+        const idx_res = try self.visit(node.index);
+        if (idx_res.isError()) return idx_res;
+        const idx = (try idx_res.getValue()).integer;
+        return switch (try target_res.getValue()) {
+            .string => |s| {
+                if (idx < 0 or idx >= @as(i64, @intCast(s.value.len)))
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                const i: usize = @intCast(idx);
+                const ch = try String.initFromSlice(node.token, s.value[i .. i + 1], self.allocator);
+                const ptr = try self.allocator.create(String);
+                ptr.* = ch;
+                try self.owned_strings.append(self.allocator, ptr);
+                return EvalResult.ok(.{ .string = ptr });
+            },
+            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+        };
     }
 
     fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) anyerror!EvalResult {
@@ -342,6 +382,7 @@ pub const Interpreter = struct {
             .while_block => self.visitWhileBlock(&node.while_block),
             .break_stmt, .continue_stmt => self.visitLoopStatement(node),
             .ret => self.visitReturnStmt(&node.ret),
+            .subscript => self.visitSubscript(&node.subscript),
             else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
         };
     }

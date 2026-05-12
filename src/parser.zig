@@ -149,6 +149,19 @@ pub const Parser = struct {
         return func_call;
     }
 
+    pub fn parseSubscript(self: *Self) anyerror!*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        const target = try self.parseVariable();
+        try self.eat(TokenType.lbrack);
+        const index = try self.parseExpr();
+        try self.eat(TokenType.rbrack);
+        return try self.makeNode(Node{ .subscript = AstNode.Subscript{
+            .token = token,
+            .target = target,
+            .index = index,
+        } });
+    }
+
     pub fn parseFactor(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
@@ -159,6 +172,8 @@ pub const Parser = struct {
                 const next_token = try self.peek(1) orelse return Error.UnexpectedEndOfInput;
                 if (next_token.type == TokenType.lparen) {
                     return try self.parseFuncCall();
+                } else if (next_token.type == TokenType.lbrack) {
+                    return try self.parseSubscript();
                 } else {
                     return try self.parseVariable();
                 }
@@ -175,12 +190,10 @@ pub const Parser = struct {
             },
             .string => {
                 try self.eat(token.type);
-                if (token.lexeme.?.len == 0) {
-                    return try self.makeNode(.{ .string = try AstNode.String.initEmpty(token, self.arena.allocator()) });
-                } else {
-                    const lexeme = try token.getLexeme();
-                    return try self.makeNode(.{ .string = try AstNode.String.initFromSlice(token, lexeme, self.arena.allocator()) });
-                }
+                const lexeme = try token.getLexeme();
+                // Strip surrounding quote characters from the lexeme
+                const content = if (lexeme.len >= 2) lexeme[1 .. lexeme.len - 1] else "";
+                return try self.makeNode(.{ .string = try AstNode.String.initFromSlice(token, content, self.arena.allocator()) });
             },
             else => {
                 dbg.print("wtf", .{}, @src());

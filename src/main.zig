@@ -49,10 +49,11 @@ pub fn main() !u8 {
     defer parser.deinit();
 
     var interpreter = try Interpreter.init(ast, allocator);
-    const ret: u8 = @intCast(try interpreter.interpret());
-    dbg.print("ret: {}\n", .{ret}, @src());
+    const ret_raw = try interpreter.interpret();
+    const ret_u8: u8 = @intCast(@min(@max(ret_raw, 0), 255));
+    dbg.print("ret: {}\n", .{ret_u8}, @src());
     defer interpreter.deinit();
-    return ret;
+    return ret_u8;
 }
 
 test "main" {

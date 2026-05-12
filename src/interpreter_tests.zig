@@ -17,6 +17,7 @@ const BreakStatement = @import("./ast_nodes.zig").BreakStatement;
 const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
 const ReturnStatement = @import("./ast_nodes.zig").ReturnStatement;
 const FunctionDecl = @import("./ast_nodes.zig").FunctionDecl;
+const Subscript = @import("./ast_nodes.zig").Subscript;
 
 const expect = std.testing.expectEqual;
 const expectEqual = std.testing.expectEqual;
@@ -350,6 +351,165 @@ test "typing: string equality - different content" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = functions, .global_statements = global };
+    var interp = try Interpreter.init(&ast, allocator);
+    defer interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
+}
+
+test "string concatenation: hello + world" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const plus_tok = Token{ .type = TokenType.plus, .lexeme = "+", .line = 0, .allocator = allocator };
+    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+
+    var s_hello = try String.initFromSlice(eof, "hello", allocator);
+    defer s_hello.deinit();
+    var s_world = try String.initFromSlice(eof, " world", allocator);
+    defer s_world.deinit();
+    var s_expected = try String.initFromSlice(eof, "hello world", allocator);
+    defer s_expected.deinit();
+
+    var n_hello = Node{ .string = s_hello };
+    var n_world = Node{ .string = s_world };
+    var n_expected = Node{ .string = s_expected };
+
+    var concat = Node{ .binop = BinOp{ .token = plus_tok, .lhs = &n_hello, .rhs = &n_world } };
+    var var_c = Node{ .variable = Variable{ .id = "c", .token = eof } };
+    var assign_c = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_c, .rhs = &concat } };
+    var var_c2 = Node{ .variable = Variable{ .id = "c", .token = eof } };
+    var cmp = Node{ .binop = BinOp{ .token = eq_tok, .lhs = &var_c2, .rhs = &n_expected } };
+    var ret_sc = Node{ .ret = ReturnStatement{ .expr = &cmp } };
+
+    var sc_stmts = std.ArrayList(*Node){};
+    try sc_stmts.append(allocator, &assign_c);
+    try sc_stmts.append(allocator, &ret_sc);
+    defer sc_stmts.deinit(allocator);
+    var sc_args = std.ArrayList(*Node){};
+    defer sc_args.deinit(allocator);
+    var sc_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = sc_args, .statements = sc_stmts } };
+
+    var sc_funcs = std.ArrayList(*Node){};
+    try sc_funcs.append(allocator, &sc_func);
+    defer sc_funcs.deinit(allocator);
+    var sc_global = std.ArrayList(*Node){};
+    defer sc_global.deinit(allocator);
+
+    var sc_ast = Program{ .id = "", .functions = sc_funcs, .global_statements = sc_global };
+    var sc_interp = try Interpreter.init(&sc_ast, allocator);
+    defer sc_interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try sc_interp.interpret());
+}
+
+test "string + integer returns MismatchingBinOpTypes" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const plus_tok = Token{ .type = TokenType.plus, .lexeme = "+", .line = 0, .allocator = allocator };
+
+    var s_hi = try String.initFromSlice(eof, "hi", allocator);
+    defer s_hi.deinit();
+    var n_str = Node{ .string = s_hi };
+    var n_num = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var bad_add = Node{ .binop = BinOp{ .token = plus_tok, .lhs = &n_str, .rhs = &n_num } };
+    var err_ret = Node{ .ret = ReturnStatement{ .expr = &bad_add } };
+
+    var err_stmts = std.ArrayList(*Node){};
+    try err_stmts.append(allocator, &err_ret);
+    defer err_stmts.deinit(allocator);
+    var err_args = std.ArrayList(*Node){};
+    defer err_args.deinit(allocator);
+    var err_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = err_args, .statements = err_stmts } };
+
+    var err_funcs = std.ArrayList(*Node){};
+    try err_funcs.append(allocator, &err_func);
+    defer err_funcs.deinit(allocator);
+    var err_global = std.ArrayList(*Node){};
+    defer err_global.deinit(allocator);
+
+    var err_ast = Program{ .id = "", .functions = err_funcs, .global_statements = err_global };
+    var err_interp = try Interpreter.init(&err_ast, allocator);
+    defer err_interp.deinit();
+    try std.testing.expectError(error.MismatchingBinOpTypes, err_interp.interpret());
+}
+
+test "string subscript in-bounds returns single char" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
+
+    // s = "hello"
+    var s_hello = try String.initFromSlice(eof, "hello", allocator);
+    defer s_hello.deinit();
+    var n_hello = Node{ .string = s_hello };
+    var var_s = Node{ .variable = Variable{ .id = "s", .token = eof } };
+    var assign_s = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_s, .rhs = &n_hello } };
+
+    // ch = s[1]
+    var n_one = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var var_s2 = Node{ .variable = Variable{ .id = "s", .token = eof } };
+    var sub = Node{ .subscript = Subscript{ .token = eof, .target = &var_s2, .index = &n_one } };
+    var var_ch = Node{ .variable = Variable{ .id = "ch", .token = eof } };
+    var assign_ch = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_ch, .rhs = &sub } };
+
+    // return ch == "e"
+    var s_e = try String.initFromSlice(eof, "e", allocator);
+    defer s_e.deinit();
+    var n_e = Node{ .string = s_e };
+    var var_ch2 = Node{ .variable = Variable{ .id = "ch", .token = eof } };
+    var cmp = Node{ .binop = BinOp{ .token = eq_tok, .lhs = &var_ch2, .rhs = &n_e } };
+    var ret = Node{ .ret = ReturnStatement{ .expr = &cmp } };
+
+    var stmts = std.ArrayList(*Node){};
+    try stmts.append(allocator, &assign_s);
+    try stmts.append(allocator, &assign_ch);
+    try stmts.append(allocator, &ret);
+    defer stmts.deinit(allocator);
+    var args = std.ArrayList(*Node){};
+    defer args.deinit(allocator);
+    var func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args, .statements = stmts } };
+    var funcs = std.ArrayList(*Node){};
+    try funcs.append(allocator, &func);
+    defer funcs.deinit(allocator);
+    var global = std.ArrayList(*Node){};
+    defer global.deinit(allocator);
+
+    var ast = Program{ .id = "", .functions = funcs, .global_statements = global };
+    var interp = try Interpreter.init(&ast, allocator);
+    defer interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
+}
+
+test "string subscript out-of-bounds returns IndexOutOfBounds" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+
+    var s_hi = try String.initFromSlice(eof, "hi", allocator);
+    defer s_hi.deinit();
+    var n_hi = Node{ .string = s_hi };
+    var var_s = Node{ .variable = Variable{ .id = "s", .token = eof } };
+    var assign_s = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_s, .rhs = &n_hi } };
+
+    var n_nine = Node{ .num = Num{ .token = eof, .value = 9 } };
+    var var_s2 = Node{ .variable = Variable{ .id = "s", .token = eof } };
+    var sub = Node{ .subscript = Subscript{ .token = eof, .target = &var_s2, .index = &n_nine } };
+    var ret = Node{ .ret = ReturnStatement{ .expr = &sub } };
+
+    var stmts = std.ArrayList(*Node){};
+    try stmts.append(allocator, &assign_s);
+    try stmts.append(allocator, &ret);
+    defer stmts.deinit(allocator);
+    var args = std.ArrayList(*Node){};
+    defer args.deinit(allocator);
+    var func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args, .statements = stmts } };
+    var funcs = std.ArrayList(*Node){};
+    try funcs.append(allocator, &func);
+    defer funcs.deinit(allocator);
+    var global = std.ArrayList(*Node){};
+    defer global.deinit(allocator);
+
+    var ast = Program{ .id = "", .functions = funcs, .global_statements = global };
     var interp = try Interpreter.init(&ast, allocator);
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());

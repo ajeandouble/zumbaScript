@@ -36,9 +36,12 @@ pub const String = struct {
         };
     }
 
-    pub fn append(self: *String, more: []const u8, allocator: std.mem.Allocator) !void {
-        std.mem.concat(allocator, u8, &[_][]const u8{ self.value, more });
-        // NOTE: check for leaks
+    pub fn append(self: *String, more: []const u8) !void {
+        const new_buf = try self.allocator.alloc(u8, self.value.len + more.len);
+        @memcpy(new_buf[0..self.value.len], self.value);
+        @memcpy(new_buf[self.value.len..], more);
+        self.allocator.free(self.value);
+        self.value = new_buf;
     }
 
     pub fn deinit(self: *String) void {
@@ -126,4 +129,10 @@ pub const ContinueStatement = struct {
     token: Token = undefined,
 };
 
-pub const Node = union(enum) { num: Num, array: Array, string: String, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement };
+pub const Subscript = struct {
+    token: Token = undefined,
+    target: *const Node = undefined,
+    index: *const Node = undefined,
+};
+
+pub const Node = union(enum) { num: Num, array: Array, string: String, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement, subscript: Subscript };

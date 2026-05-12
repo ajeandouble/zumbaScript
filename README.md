@@ -77,8 +77,8 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
     - [ ] Slicing
   - [ ] Strings
     - [x] String declaration
-    - [ ] String arithmetics
-    - [ ] Subscripting
+    - [x] String arithmetics (`+` concatenation)
+    - [x] Subscripting (`s[i]`)
     - [ ] Slicing
   - [ ] Structs
   - [ ] Panic
@@ -107,9 +107,9 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
     - [x] Unary `-` and `!` for all types
   - [ ] Strings
     - [x] String declaration
-    - [x] String equality
-    - [ ] String arithmetics (concatenation)
-    - [ ] Subscripting
+    - [x] String equality (`==` / `!=`)
+    - [x] String concatenation (`+`)
+    - [x] Subscripting (`s[i]` → 1-char string, bounds-checked)
     - [ ] Slicing
   - [ ] Arrays
     - [ ] Array arithmetics
