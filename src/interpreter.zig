@@ -526,6 +526,13 @@ pub const Interpreter = struct {
         };
     }
 
+    fn printRuntimeError(e: EvalResultErr) void {
+        const stderr = std.fs.File.stderr();
+        stderr.writeAll("Runtime error: ") catch {};
+        stderr.writeAll(@errorName(e.type)) catch {};
+        stderr.writeAll("\n") catch {};
+    }
+
     pub fn interpret(self: *Self) !i64 {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
@@ -563,6 +570,7 @@ pub const Interpreter = struct {
         }
         if (ret.isError()) {
             try self.popStackFrame();
+            printRuntimeError(ret.err);
             return 1;
         }
 
@@ -576,7 +584,10 @@ pub const Interpreter = struct {
                     .integer => main_ret.return_val.integer,
                     else => 0,
                 },
-                .err => 1,
+                .err => |e| {
+                    printRuntimeError(e);
+                    return 1;
+                },
                 else => 0,
             };
         }
@@ -587,7 +598,10 @@ pub const Interpreter = struct {
                 .integer => ret.return_val.integer,
                 else => 0,
             },
-            .err => 1,
+            .err => |e| {
+                printRuntimeError(e);
+                return 1;
+            },
             else => 0,
         };
     }
