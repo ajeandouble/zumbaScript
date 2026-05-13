@@ -17,6 +17,7 @@ const BreakStatement = @import("./ast_nodes.zig").BreakStatement;
 const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
 const ReturnStatement = @import("./ast_nodes.zig").ReturnStatement;
 const Subscript = @import("./ast_nodes.zig").Subscript;
+const Slice = @import("./ast_nodes.zig").Slice;
 const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 
@@ -91,13 +92,15 @@ pub const Interpreter = struct {
     stack: std.ArrayList(StackFrame),
     global_funcs: std.StringHashMap(*const FunctionDecl),
     owned_strings: std.ArrayList(*String),
+    owned_arrays: std.ArrayList([]Value),
     ast: *const Program = undefined,
 
     pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
         const stack = try std.ArrayList(StackFrame).initCapacity(allocator, 1024);
         const global_funcs = std.StringHashMap(*const FunctionDecl).init(allocator);
         const owned_strings = std.ArrayList(*String){};
-        return Self{ .allocator = allocator, .ast = ast, .stack = stack, .global_funcs = global_funcs, .owned_strings = owned_strings };
+        const owned_arrays = std.ArrayList([]Value){};
+        return Self{ .allocator = allocator, .ast = ast, .stack = stack, .global_funcs = global_funcs, .owned_strings = owned_strings, .owned_arrays = owned_arrays };
     }
 
     pub fn deinit(self: *Self) void {
@@ -112,15 +115,19 @@ pub const Interpreter = struct {
             self.allocator.destroy(s);
         }
         self.owned_strings.deinit(self.allocator);
+        for (self.owned_arrays.items) |arr| {
+            self.allocator.free(arr);
+        }
+        self.owned_arrays.deinit(self.allocator);
     }
 
     pub inline fn isTruethy(value: Value) !bool {
         return switch (value) {
             .integer => |i| i != 0,
-            .float   => |f| f != 0.0,
-            .string  => |s| s.value.len > 0,
-            .array   => |a| a.len > 0,
-            .void    => false,
+            .float => |f| f != 0.0,
+            .string => |s| s.value.len > 0,
+            .array => |a| a.len > 0,
+            .void => false,
         };
     }
 
@@ -165,44 +172,44 @@ pub const Interpreter = struct {
             const l = lhs.integer;
             const r = rhs.integer;
             return switch (op) {
-                .plus  => .{ .integer = l + r },
+                .plus => .{ .integer = l + r },
                 .minus => .{ .integer = l - r },
-                .mul   => .{ .integer = l * r },
-                .div   => .{ .integer = @divTrunc(l, r) },
-                .mod   => .{ .integer = @mod(l, r) },
-                .lt    => .{ .integer = @intFromBool(l < r) },
-                .le    => .{ .integer = @intFromBool(l <= r) },
-                .eq    => .{ .integer = @intFromBool(l == r) },
-                .ne    => .{ .integer = @intFromBool(l != r) },
-                .ge    => .{ .integer = @intFromBool(l >= r) },
-                .gt    => .{ .integer = @intFromBool(l > r) },
-                else   => Error.NotImplemented,
+                .mul => .{ .integer = l * r },
+                .div => .{ .integer = @divTrunc(l, r) },
+                .mod => .{ .integer = @mod(l, r) },
+                .lt => .{ .integer = @intFromBool(l < r) },
+                .le => .{ .integer = @intFromBool(l <= r) },
+                .eq => .{ .integer = @intFromBool(l == r) },
+                .ne => .{ .integer = @intFromBool(l != r) },
+                .ge => .{ .integer = @intFromBool(l >= r) },
+                .gt => .{ .integer = @intFromBool(l > r) },
+                else => Error.NotImplemented,
             };
         }
 
         const l: f64 = switch (lhs) {
             .integer => |i| @floatFromInt(i),
-            .float   => |f| f,
-            else     => unreachable,
+            .float => |f| f,
+            else => unreachable,
         };
         const r: f64 = switch (rhs) {
             .integer => |i| @floatFromInt(i),
-            .float   => |f| f,
-            else     => unreachable,
+            .float => |f| f,
+            else => unreachable,
         };
         return switch (op) {
-            .plus  => .{ .float = l + r },
+            .plus => .{ .float = l + r },
             .minus => .{ .float = l - r },
-            .mul   => .{ .float = l * r },
-            .div   => .{ .float = l / r },
-            .mod   => Error.MismatchingBinOpTypes,
-            .lt    => .{ .integer = @intFromBool(l < r) },
-            .le    => .{ .integer = @intFromBool(l <= r) },
-            .eq    => .{ .integer = @intFromBool(l == r) },
-            .ne    => .{ .integer = @intFromBool(l != r) },
-            .ge    => .{ .integer = @intFromBool(l >= r) },
-            .gt    => .{ .integer = @intFromBool(l > r) },
-            else   => Error.NotImplemented,
+            .mul => .{ .float = l * r },
+            .div => .{ .float = l / r },
+            .mod => Error.MismatchingBinOpTypes,
+            .lt => .{ .integer = @intFromBool(l < r) },
+            .le => .{ .integer = @intFromBool(l <= r) },
+            .eq => .{ .integer = @intFromBool(l == r) },
+            .ne => .{ .integer = @intFromBool(l != r) },
+            .ge => .{ .integer = @intFromBool(l >= r) },
+            .gt => .{ .integer = @intFromBool(l > r) },
+            else => Error.NotImplemented,
         };
     }
 
@@ -246,8 +253,48 @@ pub const Interpreter = struct {
                 try self.owned_strings.append(self.allocator, ptr);
                 return EvalResult.ok(.{ .string = ptr });
             },
+            .array => |arr| {
+                if (idx < 0 or idx >= @as(i64, @intCast(arr.len)))
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                const i: usize = @intCast(idx);
+                return EvalResult.ok(arr[i]);
+            },
             else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
         };
+    }
+
+    fn visitSlice(self: *Self, node: *const Slice) anyerror!EvalResult {
+        const target_res = try self.visit(node.target);
+        if (target_res.isError()) return target_res;
+        const lo_res = try self.visit(node.lo);
+        if (lo_res.isError()) return lo_res;
+        const hi_res = try self.visit(node.hi);
+        if (hi_res.isError()) return hi_res;
+        const lo_raw = (try lo_res.getValue()).integer;
+        const hi_raw = (try hi_res.getValue()).integer;
+        return switch (try target_res.getValue()) {
+            .string => |s| {
+                if (lo_raw < 0 or hi_raw < 0 or lo_raw > hi_raw or @as(usize, @intCast(hi_raw)) > s.value.len)
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                const lo: usize = @intCast(lo_raw);
+                const hi: usize = @intCast(hi_raw);
+                const ptr = try self.allocator.create(String);
+                ptr.* = try String.initFromSlice(node.token, s.value[lo..hi], self.allocator);
+                try self.owned_strings.append(self.allocator, ptr);
+                return EvalResult.ok(.{ .string = ptr });
+            },
+            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+        };
+    }
+
+    fn visitArray(self: *Self, node: *const Array) anyerror!EvalResult {
+        const elems = node.elements.items;
+        const buf = try self.allocator.alloc(Value, elems.len);
+        for (elems, 0..) |elem, i| {
+            buf[i] = try (try self.visit(elem)).getValue();
+        }
+        try self.owned_arrays.append(self.allocator, buf);
+        return EvalResult.ok(.{ .array = buf });
     }
 
     fn visitStatements(self: *Self, statements: std.ArrayList(*Node)) anyerror!EvalResult {
@@ -269,12 +316,15 @@ pub const Interpreter = struct {
 
     fn visitVariable(self: *Self, node: *const Variable) anyerror!EvalResult {
         dbg.print("variable id={s}\n", .{node.id}, @src());
-        var locals = self.stack.getLast().symbols;
-        if (locals.get(node.id)) |eval_result| {
-            return eval_result;
-        } else {
-            return EvalResult.failure(.{ .type = Error.VariableIsNotDeclared, .msg = "" });
+        const frames = self.stack.items;
+        // Check current (top) frame first, then global (bottom) frame.
+        if (frames.len > 0) {
+            if (frames[frames.len - 1].symbols.get(node.id)) |r| return r;
         }
+        if (frames.len > 1) {
+            if (frames[0].symbols.get(node.id)) |r| return r;
+        }
+        return EvalResult.failure(.{ .type = Error.VariableIsNotDeclared, .msg = "" });
     }
 
     fn visitFuncCall(self: *Self, func_call: *const FunctionCall) anyerror!EvalResult {
@@ -383,26 +433,45 @@ pub const Interpreter = struct {
             .break_stmt, .continue_stmt => self.visitLoopStatement(node),
             .ret => self.visitReturnStmt(&node.ret),
             .subscript => self.visitSubscript(&node.subscript),
+            .slice => self.visitSlice(&node.slice),
+            .array => self.visitArray(&node.array),
             else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
         };
     }
 
     fn visitAssignment(self: *Self, binop: *const BinOp) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
-        const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
-        const locals_ptr = &last_item_ptr.*.symbols;
         const rhs_result = try self.visit(binop.rhs);
-        const id = binop.lhs.*.variable.id;
-        if (locals_ptr.*.getPtr(id)) |val_ptr| {
-            val_ptr.* = rhs_result;
-        } else {
-            const key = self.allocator.dupe(u8, id) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
-            locals_ptr.*.put(key, rhs_result) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
-        }
-        var it = last_item_ptr.*.symbols.iterator();
-        while (it.next()) |item| {
-            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
-            dbg.print("{}\n", .{item.value_ptr.*}, @src());
+        switch (binop.lhs.*) {
+            .variable => |v| {
+                const last_item_ptr = &self.stack.items[self.stack.items.len - 1];
+                const locals_ptr = &last_item_ptr.*.symbols;
+                if (locals_ptr.*.getPtr(v.id)) |val_ptr| {
+                    val_ptr.* = rhs_result;
+                } else {
+                    const key = self.allocator.dupe(u8, v.id) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
+                    locals_ptr.*.put(key, rhs_result) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
+                }
+                var it = last_item_ptr.*.symbols.iterator();
+                while (it.next()) |item| {
+                    dbg.print("{s}\n", .{item.key_ptr.*}, @src());
+                    dbg.print("{}\n", .{item.value_ptr.*}, @src());
+                }
+            },
+            .subscript => |sub| {
+                const target_val = try (try self.visit(sub.target)).getValue();
+                const idx_raw = (try (try self.visit(sub.index)).getValue()).integer;
+                switch (target_val) {
+                    .array => |arr| {
+                        if (idx_raw < 0 or idx_raw >= @as(i64, @intCast(arr.len)))
+                            return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                        const i: usize = @intCast(idx_raw);
+                        arr[i] = try rhs_result.getValue();
+                    },
+                    else => return EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+                }
+            },
+            else => return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" }),
         }
         return rhs_result;
     }
@@ -449,8 +518,8 @@ pub const Interpreter = struct {
         return switch (unaryop.token.type) {
             .minus => switch (val) {
                 .integer => |i| EvalResult.ok(.{ .integer = -i }),
-                .float   => |f| EvalResult.ok(.{ .float = -f }),
-                else     => EvalResult.failure(.{ .type = Error.MismatchingBinOpTypes, .msg = "" }),
+                .float => |f| EvalResult.ok(.{ .float = -f }),
+                else => EvalResult.failure(.{ .type = Error.MismatchingBinOpTypes, .msg = "" }),
             },
             .not_op => EvalResult.ok(.{ .integer = @intFromBool(!try isTruethy(val)) }),
             else => result,
@@ -492,12 +561,15 @@ pub const Interpreter = struct {
             dbg.print("{s}: {}\n", .{ item.key_ptr.*, item.value_ptr.* }, @src());
             i += 1;
         }
-        try self.popStackFrame();
-        if (ret.isError()) return 1;
+        if (ret.isError()) {
+            try self.popStackFrame();
+            return 1;
+        }
 
         if (self.global_funcs.get("main")) |main_func| {
             try self.pushStackFrame();
             const main_ret = try self.visitStatements(main_func.statements);
+            try self.popStackFrame();
             try self.popStackFrame();
             return switch (main_ret) {
                 .return_val => switch (main_ret.return_val) {
@@ -509,6 +581,7 @@ pub const Interpreter = struct {
             };
         }
 
+        try self.popStackFrame();
         return switch (ret) {
             .return_val => switch (ret.return_val) {
                 .integer => ret.return_val.integer,

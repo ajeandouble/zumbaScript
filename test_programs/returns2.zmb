@@ -1,4 +1,6 @@
+a = 12;
 function main() {
+    a = [42, 43];
+    return a[3];
     return 0;
 }
-return 42;

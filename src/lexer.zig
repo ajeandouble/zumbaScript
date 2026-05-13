@@ -51,6 +51,7 @@ const mult_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
     .{ ">=", TokenType.ge },
     .{ "&&", TokenType.and_op },
     .{ "||", TokenType.or_op },
+    .{ "..", TokenType.dotdot },
 });
 
 const whitespaces_no_nl = std.StaticStringMap(undefined).initComptime(.{

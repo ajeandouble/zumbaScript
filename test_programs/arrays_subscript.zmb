@@ -1,0 +1,9 @@
+function main() {
+    a = [10, 20, 30];
+    first = a[0];
+    a[1] = 99;
+    if (first == 10 && a[1] == 99) {
+        return 42;
+    }
+    return 0;
+}

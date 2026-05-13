@@ -861,3 +861,42 @@ test "continue outside loop raises error" {
     const program = parser.parse();
     try std.testing.expectError(ParserError.InvalidLoopStatement, program);
 }
+
+test "return in global scope raises error" {
+    // `return 42 ;`
+    var tokens = [_]Token{
+        Token{ .type = TokenType.return_kw, .lexeme = "return", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = parser.parse();
+    try std.testing.expectError(ParserError.ReturnInGlobalScope, program);
+}
+
+test "return after function decl in global scope raises error" {
+    // `function main() {} return 0 ;`
+    var tokens = [_]Token{
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        Token{ .type = TokenType.return_kw, .lexeme = "return", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "0", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = parser.parse();
+    try std.testing.expectError(ParserError.ReturnInGlobalScope, program);
+}

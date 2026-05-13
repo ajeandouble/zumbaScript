@@ -79,7 +79,7 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
     - [x] String declaration
     - [x] String arithmetics (`+` concatenation)
     - [x] Subscripting (`s[i]`)
-    - [ ] Slicing
+    - [x] Slicing
   - [ ] Structs
   - [ ] Panic
   - [ ] Exceptions (Index error)
@@ -110,10 +110,11 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
     - [x] String equality (`==` / `!=`)
     - [x] String concatenation (`+`)
     - [x] Subscripting (`s[i]` → 1-char string, bounds-checked)
-    - [ ] Slicing
+    - [x] Slicing (`s[lo..hi]` → substring, bounds-checked)
   - [ ] Arrays
+    - [x] Array literals (`[]`, `[e1, e2, ...]`)
     - [ ] Array arithmetics
-    - [ ] Subscripting
+    - [x] Subscripting (read `a[i]` + write `a[i] = x`, bounds-checked)
     - [ ] Slicing
 
 ## Resources

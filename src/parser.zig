@@ -8,7 +8,7 @@ const Node = AstNode.Node;
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
 
-pub const Error = error{ ParsingError, BadToken, UnexpectedEndOfInput, MissingSemiColumn, NullTokens, NullLexeme, UnexpectedNodeType, InvalidElseStatement, InvalidLoopStatement };
+pub const Error = error{ ParsingError, BadToken, UnexpectedEndOfInput, MissingSemiColumn, NullTokens, NullLexeme, UnexpectedNodeType, InvalidElseStatement, InvalidLoopStatement, ReturnInGlobalScope };
 
 pub const Parser = struct {
     const Self = @This();
@@ -153,12 +153,24 @@ pub const Parser = struct {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         const target = try self.parseVariable();
         try self.eat(TokenType.lbrack);
-        const index = try self.parseExpr();
+        const lo = try self.parseExpr();
+        const curr = try self.current() orelse return Error.UnexpectedEndOfInput;
+        if (curr.type == TokenType.dotdot) {
+            try self.eat(TokenType.dotdot);
+            const hi = try self.parseExpr();
+            try self.eat(TokenType.rbrack);
+            return try self.makeNode(Node{ .slice = AstNode.Slice{
+                .token = token,
+                .target = target,
+                .lo = lo,
+                .hi = hi,
+            } });
+        }
         try self.eat(TokenType.rbrack);
         return try self.makeNode(Node{ .subscript = AstNode.Subscript{
             .token = token,
             .target = target,
-            .index = index,
+            .index = lo,
         } });
     }
 
@@ -195,6 +207,7 @@ pub const Parser = struct {
                 const content = if (lexeme.len >= 2) lexeme[1 .. lexeme.len - 1] else "";
                 return try self.makeNode(.{ .string = try AstNode.String.initFromSlice(token, content, self.arena.allocator()) });
             },
+            .lbrack => return try self.parseArrayDecl(),
             else => {
                 dbg.print("wtf", .{}, @src());
                 return Error.BadToken;
@@ -249,19 +262,19 @@ pub const Parser = struct {
                 .rbrack => break,
                 else => try elems.append(self.arena.allocator(), try self.parseExpr()),
             }
-            if (try self.peek(1).type == TokenType.comma) {
-                self.eat(TokenType.comma);
-            }
             curr_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
+            if (curr_tok.type == TokenType.comma) {
+                try self.eat(TokenType.comma);
+                curr_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
+            }
         }
-
         return elems;
     }
 
     pub fn parseArrayDecl(self: *Self) anyerror!*Node {
-        var lbrack_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
+        const lbrack_tok = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ lbrack_tok.type, try lbrack_tok.getLexeme() }, @src());
-        self.eat(TokenType.lbrack);
+        try self.eat(TokenType.lbrack);
         const elems = try self.parseArrayElements();
         const node = try self.makeNode(Node{ .array = AstNode.Array{ .token = lbrack_tok, .elements = elems } });
         try self.eat(TokenType.rbrack);
@@ -449,6 +462,14 @@ pub const Parser = struct {
                     },
                     else => {
                         const expr = try self.parseExpr();
+                        const curr = try self.current() orelse return Error.UnexpectedEndOfInput;
+                        if (curr.type == TokenType.assign) {
+                            const assign_token = curr;
+                            try self.eat(TokenType.assign);
+                            const rhs = try self.parseExpr();
+                            try self.eat(TokenType.semi);
+                            return try self.makeNode(Node{ .binop = AstNode.BinOp{ .token = assign_token, .lhs = expr, .rhs = rhs } });
+                        }
                         try self.eat(TokenType.semi);
                         return expr;
                     },
@@ -546,6 +567,7 @@ pub const Parser = struct {
                 .function_kw => {
                     try functions_decls.append(self.arena.allocator(), try self.parseFuncDecl());
                 },
+                .return_kw => return Error.ReturnInGlobalScope,
                 else => {
                     const stmt = try self.parseStatement();
                     try global_statements.append(self.arena.allocator(), stmt);

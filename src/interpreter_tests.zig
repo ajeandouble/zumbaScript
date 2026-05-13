@@ -18,6 +18,8 @@ const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
 const ReturnStatement = @import("./ast_nodes.zig").ReturnStatement;
 const FunctionDecl = @import("./ast_nodes.zig").FunctionDecl;
 const Subscript = @import("./ast_nodes.zig").Subscript;
+const Slice = @import("./ast_nodes.zig").Slice;
+const Array = @import("./ast_nodes.zig").Array;
 
 const expect = std.testing.expectEqual;
 const expectEqual = std.testing.expectEqual;
@@ -513,4 +515,306 @@ test "string subscript out-of-bounds returns IndexOutOfBounds" {
     var interp = try Interpreter.init(&ast, allocator);
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
+}
+
+test "string slice in-bounds returns correct substring" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
+
+    var s_hello = try String.initFromSlice(eof, "hello", allocator);
+    defer s_hello.deinit();
+    var n_hello = Node{ .string = s_hello };
+    var n_lo = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var n_hi = Node{ .num = Num{ .token = eof, .value = 3 } };
+    var slice_node = Node{ .slice = Slice{ .token = eof, .target = &n_hello, .lo = &n_lo, .hi = &n_hi } };
+
+    var s_el = try String.initFromSlice(eof, "el", allocator);
+    defer s_el.deinit();
+    var n_el = Node{ .string = s_el };
+    var cmp = Node{ .binop = BinOp{ .token = eq_tok, .lhs = &slice_node, .rhs = &n_el } };
+    var ret = Node{ .ret = ReturnStatement{ .expr = &cmp } };
+
+    var stmts = std.ArrayList(*Node){};
+    try stmts.append(allocator, &ret);
+    defer stmts.deinit(allocator);
+    var args = std.ArrayList(*Node){};
+    defer args.deinit(allocator);
+    var func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args, .statements = stmts } };
+    var funcs = std.ArrayList(*Node){};
+    try funcs.append(allocator, &func);
+    defer funcs.deinit(allocator);
+    var global = std.ArrayList(*Node){};
+    defer global.deinit(allocator);
+
+    var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
+    var interp = try Interpreter.init(&prog, allocator);
+    defer interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
+}
+
+test "string slice lo > hi returns IndexOutOfBounds" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+
+    var s_hello2 = try String.initFromSlice(eof, "hello", allocator);
+    defer s_hello2.deinit();
+    var n_hello2 = Node{ .string = s_hello2 };
+    var n_lo2 = Node{ .num = Num{ .token = eof, .value = 3 } };
+    var n_hi2 = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var slice2 = Node{ .slice = Slice{ .token = eof, .target = &n_hello2, .lo = &n_lo2, .hi = &n_hi2 } };
+    var ret2 = Node{ .ret = ReturnStatement{ .expr = &slice2 } };
+
+    var stmts2 = std.ArrayList(*Node){};
+    try stmts2.append(allocator, &ret2);
+    defer stmts2.deinit(allocator);
+    var args2 = std.ArrayList(*Node){};
+    defer args2.deinit(allocator);
+    var func2 = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args2, .statements = stmts2 } };
+    var funcs2 = std.ArrayList(*Node){};
+    try funcs2.append(allocator, &func2);
+    defer funcs2.deinit(allocator);
+    var global2 = std.ArrayList(*Node){};
+    defer global2.deinit(allocator);
+
+    var prog2 = Program{ .id = "", .functions = funcs2, .global_statements = global2 };
+    var interp2 = try Interpreter.init(&prog2, allocator);
+    defer interp2.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try interp2.interpret());
+}
+
+test "string slice hi > len returns IndexOutOfBounds" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+
+    var s_hi3 = try String.initFromSlice(eof, "hi", allocator);
+    defer s_hi3.deinit();
+    var n_str3 = Node{ .string = s_hi3 };
+    var n_lo3 = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var n_hi3 = Node{ .num = Num{ .token = eof, .value = 10 } };
+    var slice3 = Node{ .slice = Slice{ .token = eof, .target = &n_str3, .lo = &n_lo3, .hi = &n_hi3 } };
+    var ret3 = Node{ .ret = ReturnStatement{ .expr = &slice3 } };
+
+    var stmts3 = std.ArrayList(*Node){};
+    try stmts3.append(allocator, &ret3);
+    defer stmts3.deinit(allocator);
+    var args3 = std.ArrayList(*Node){};
+    defer args3.deinit(allocator);
+    var func3 = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args3, .statements = stmts3 } };
+    var funcs3 = std.ArrayList(*Node){};
+    try funcs3.append(allocator, &func3);
+    defer funcs3.deinit(allocator);
+    var global3 = std.ArrayList(*Node){};
+    defer global3.deinit(allocator);
+
+    var prog3 = Program{ .id = "", .functions = funcs3, .global_statements = global3 };
+    var interp3 = try Interpreter.init(&prog3, allocator);
+    defer interp3.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try interp3.interpret());
+}
+
+test "empty array literal evaluates without error" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+
+    const empty_elems = std.ArrayList(*Node){};
+    var n_arr = Node{ .array = Array{ .token = eof, .elements = empty_elems } };
+    var var_a = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var assign_a = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_a, .rhs = &n_arr } };
+    var n_zero = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var ret_zero = Node{ .ret = ReturnStatement{ .expr = &n_zero } };
+
+    var stmts_arr = std.ArrayList(*Node){};
+    try stmts_arr.append(allocator, &assign_a);
+    try stmts_arr.append(allocator, &ret_zero);
+    defer stmts_arr.deinit(allocator);
+    var args_arr = std.ArrayList(*Node){};
+    defer args_arr.deinit(allocator);
+    var func_arr = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args_arr, .statements = stmts_arr } };
+    var funcs_arr = std.ArrayList(*Node){};
+    try funcs_arr.append(allocator, &func_arr);
+    defer funcs_arr.deinit(allocator);
+    var global_arr = std.ArrayList(*Node){};
+    defer global_arr.deinit(allocator);
+
+    var prog_arr = Program{ .id = "", .functions = funcs_arr, .global_statements = global_arr };
+    var interp_arr = try Interpreter.init(&prog_arr, allocator);
+    defer interp_arr.deinit();
+    try std.testing.expectEqual(@as(i64, 0), try interp_arr.interpret());
+}
+
+test "array literal with elements evaluates without error" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+
+    var e1 = Node{ .num = Num{ .token = eof, .value = 10 } };
+    var e2 = Node{ .num = Num{ .token = eof, .value = 20 } };
+    var e3 = Node{ .num = Num{ .token = eof, .value = 30 } };
+    var arr_elems = std.ArrayList(*Node){};
+    try arr_elems.append(allocator, &e1);
+    try arr_elems.append(allocator, &e2);
+    try arr_elems.append(allocator, &e3);
+    defer arr_elems.deinit(allocator);
+
+    var n_arr3 = Node{ .array = Array{ .token = eof, .elements = arr_elems } };
+    var var_a3 = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var assign_a3 = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_a3, .rhs = &n_arr3 } };
+    var n_zero3 = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var ret_zero3 = Node{ .ret = ReturnStatement{ .expr = &n_zero3 } };
+
+    var stmts3e = std.ArrayList(*Node){};
+    try stmts3e.append(allocator, &assign_a3);
+    try stmts3e.append(allocator, &ret_zero3);
+    defer stmts3e.deinit(allocator);
+    var args3e = std.ArrayList(*Node){};
+    defer args3e.deinit(allocator);
+    var func3e = Node{ .func_decl = FunctionDecl{ .id = "main", .args = args3e, .statements = stmts3e } };
+    var funcs3e = std.ArrayList(*Node){};
+    try funcs3e.append(allocator, &func3e);
+    defer funcs3e.deinit(allocator);
+    var global3e = std.ArrayList(*Node){};
+    defer global3e.deinit(allocator);
+
+    var prog3e = Program{ .id = "", .functions = funcs3e, .global_statements = global3e };
+    var interp3e = try Interpreter.init(&prog3e, allocator);
+    defer interp3e.deinit();
+    try std.testing.expectEqual(@as(i64, 0), try interp3e.interpret());
+}
+
+test "array subscript read returns correct element" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
+
+    // a = [10, 20, 30]; return a[1] == 20;
+    var e10 = Node{ .num = Num{ .token = eof, .value = 10 } };
+    var e20 = Node{ .num = Num{ .token = eof, .value = 20 } };
+    var e30 = Node{ .num = Num{ .token = eof, .value = 30 } };
+    var rd_elems = std.ArrayList(*Node){};
+    try rd_elems.append(allocator, &e10);
+    try rd_elems.append(allocator, &e20);
+    try rd_elems.append(allocator, &e30);
+    defer rd_elems.deinit(allocator);
+
+    var rd_arr = Node{ .array = Array{ .token = eof, .elements = rd_elems } };
+    var rd_var = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var rd_assign = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &rd_var, .rhs = &rd_arr } };
+
+    var rd_idx = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var rd_var2 = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var rd_sub = Node{ .subscript = Subscript{ .token = eof, .target = &rd_var2, .index = &rd_idx } };
+    var rd_expected = Node{ .num = Num{ .token = eof, .value = 20 } };
+    var rd_cmp = Node{ .binop = BinOp{ .token = eq_tok, .lhs = &rd_sub, .rhs = &rd_expected } };
+    var rd_ret = Node{ .ret = ReturnStatement{ .expr = &rd_cmp } };
+
+    var rd_stmts = std.ArrayList(*Node){};
+    try rd_stmts.append(allocator, &rd_assign);
+    try rd_stmts.append(allocator, &rd_ret);
+    defer rd_stmts.deinit(allocator);
+    var rd_args = std.ArrayList(*Node){};
+    defer rd_args.deinit(allocator);
+    var rd_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = rd_args, .statements = rd_stmts } };
+    var rd_funcs = std.ArrayList(*Node){};
+    try rd_funcs.append(allocator, &rd_func);
+    defer rd_funcs.deinit(allocator);
+    var rd_global = std.ArrayList(*Node){};
+    defer rd_global.deinit(allocator);
+
+    var rd_prog = Program{ .id = "", .functions = rd_funcs, .global_statements = rd_global };
+    var rd_interp = try Interpreter.init(&rd_prog, allocator);
+    defer rd_interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try rd_interp.interpret());
+}
+
+test "array subscript write mutates in place" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
+
+    // a = [1, 2, 3]; a[0] = 99; return a[0] == 99;
+    var w1 = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var w2 = Node{ .num = Num{ .token = eof, .value = 2 } };
+    var w3 = Node{ .num = Num{ .token = eof, .value = 3 } };
+    var wr_elems = std.ArrayList(*Node){};
+    try wr_elems.append(allocator, &w1);
+    try wr_elems.append(allocator, &w2);
+    try wr_elems.append(allocator, &w3);
+    defer wr_elems.deinit(allocator);
+
+    var wr_arr = Node{ .array = Array{ .token = eof, .elements = wr_elems } };
+    var wr_var = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var wr_assign = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &wr_var, .rhs = &wr_arr } };
+
+    var wr_idx0a = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var wr_var2 = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var wr_sub_lhs = Node{ .subscript = Subscript{ .token = eof, .target = &wr_var2, .index = &wr_idx0a } };
+    var wr_99 = Node{ .num = Num{ .token = eof, .value = 99 } };
+    var wr_sub_assign = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &wr_sub_lhs, .rhs = &wr_99 } };
+
+    var wr_idx0b = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var wr_var3 = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var wr_sub_read = Node{ .subscript = Subscript{ .token = eof, .target = &wr_var3, .index = &wr_idx0b } };
+    var wr_expected = Node{ .num = Num{ .token = eof, .value = 99 } };
+    var wr_cmp = Node{ .binop = BinOp{ .token = eq_tok, .lhs = &wr_sub_read, .rhs = &wr_expected } };
+    var wr_ret = Node{ .ret = ReturnStatement{ .expr = &wr_cmp } };
+
+    var wr_stmts = std.ArrayList(*Node){};
+    try wr_stmts.append(allocator, &wr_assign);
+    try wr_stmts.append(allocator, &wr_sub_assign);
+    try wr_stmts.append(allocator, &wr_ret);
+    defer wr_stmts.deinit(allocator);
+    var wr_args = std.ArrayList(*Node){};
+    defer wr_args.deinit(allocator);
+    var wr_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = wr_args, .statements = wr_stmts } };
+    var wr_funcs = std.ArrayList(*Node){};
+    try wr_funcs.append(allocator, &wr_func);
+    defer wr_funcs.deinit(allocator);
+    var wr_global = std.ArrayList(*Node){};
+    defer wr_global.deinit(allocator);
+
+    var wr_prog = Program{ .id = "", .functions = wr_funcs, .global_statements = wr_global };
+    var wr_interp = try Interpreter.init(&wr_prog, allocator);
+    defer wr_interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try wr_interp.interpret());
+}
+
+test "array subscript read out of bounds returns error" {
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+
+    var ob1 = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var ob_elems = std.ArrayList(*Node){};
+    try ob_elems.append(allocator, &ob1);
+    defer ob_elems.deinit(allocator);
+    var ob_arr = Node{ .array = Array{ .token = eof, .elements = ob_elems } };
+    var ob_var = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var ob_assign = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &ob_var, .rhs = &ob_arr } };
+
+    var ob_idx = Node{ .num = Num{ .token = eof, .value = 9 } };
+    var ob_var2 = Node{ .variable = Variable{ .id = "a", .token = eof } };
+    var ob_sub = Node{ .subscript = Subscript{ .token = eof, .target = &ob_var2, .index = &ob_idx } };
+    var ob_ret = Node{ .ret = ReturnStatement{ .expr = &ob_sub } };
+
+    var ob_stmts = std.ArrayList(*Node){};
+    try ob_stmts.append(allocator, &ob_assign);
+    try ob_stmts.append(allocator, &ob_ret);
+    defer ob_stmts.deinit(allocator);
+    var ob_args = std.ArrayList(*Node){};
+    defer ob_args.deinit(allocator);
+    var ob_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = ob_args, .statements = ob_stmts } };
+    var ob_funcs = std.ArrayList(*Node){};
+    try ob_funcs.append(allocator, &ob_func);
+    defer ob_funcs.deinit(allocator);
+    var ob_global = std.ArrayList(*Node){};
+    defer ob_global.deinit(allocator);
+
+    var ob_prog = Program{ .id = "", .functions = ob_funcs, .global_statements = ob_global };
+    var ob_interp = try Interpreter.init(&ob_prog, allocator);
+    defer ob_interp.deinit();
+    try std.testing.expectEqual(@as(i64, 1), try ob_interp.interpret());
 }

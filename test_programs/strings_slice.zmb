@@ -1,0 +1,8 @@
+function main() {
+    s = "hello";
+    sub = s[1..4];
+    if (sub == "ell") {
+        return 42;
+    }
+    return 0;
+}

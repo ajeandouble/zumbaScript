@@ -23,6 +23,7 @@ pub const TokenType = enum {
     rbrace,
     lbrack,
     rbrack,
+    dotdot,
 
     comma,
     semi,

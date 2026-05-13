@@ -15,4 +15,3 @@ function main() {
 }
 h();
 h();
-return main();

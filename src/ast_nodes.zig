@@ -135,4 +135,11 @@ pub const Subscript = struct {
     index: *const Node = undefined,
 };
 
-pub const Node = union(enum) { num: Num, array: Array, string: String, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement, subscript: Subscript };
+pub const Slice = struct {
+    token: Token = undefined,
+    target: *const Node = undefined,
+    lo: *const Node = undefined,
+    hi: *const Node = undefined,
+};
+
+pub const Node = union(enum) { num: Num, array: Array, string: String, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement, subscript: Subscript, slice: Slice };
