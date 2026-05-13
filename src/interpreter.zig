@@ -104,6 +104,9 @@ pub const Interpreter = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        for (self.stack.items) |*frame| {
+            frame.deinit();
+        }
         self.stack.deinit(self.allocator);
         var it_funcs = self.global_funcs.iterator();
         while (it_funcs.next()) |item| {
@@ -160,8 +163,16 @@ pub const Interpreter = struct {
             };
         }
 
-        if (lhs == .array and rhs == .array) {
-            return Error.InvalidConditionType;
+        if (lhs == .array) {
+            if (op != .plus) return Error.WrongBinOpTypes;
+            if (rhs != .array) return Error.MismatchingBinOpTypes;
+            const la = lhs.array;
+            const ra = rhs.array;
+            const buf = try self.allocator.alloc(Value, la.len + ra.len);
+            @memcpy(buf[0..la.len], la);
+            @memcpy(buf[la.len..], ra);
+            try self.owned_arrays.append(self.allocator, buf);
+            return .{ .array = buf };
         }
 
         const lhs_is_num = lhs == .integer or lhs == .float;
@@ -283,6 +294,16 @@ pub const Interpreter = struct {
                 try self.owned_strings.append(self.allocator, ptr);
                 return EvalResult.ok(.{ .string = ptr });
             },
+            .array => |arr| {
+                if (lo_raw < 0 or hi_raw < 0 or lo_raw > hi_raw or @as(usize, @intCast(hi_raw)) > arr.len)
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                const lo: usize = @intCast(lo_raw);
+                const hi: usize = @intCast(hi_raw);
+                const buf = try self.allocator.alloc(Value, hi - lo);
+                @memcpy(buf, arr[lo..hi]);
+                try self.owned_arrays.append(self.allocator, buf);
+                return EvalResult.ok(.{ .array = buf });
+            },
             else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
         };
     }
@@ -364,7 +385,7 @@ pub const Interpreter = struct {
                 const else_cond_val = try else_res.getValue();
                 const is_else_truethy = isTruethy(else_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
                 if (is_else_truethy) {
-                    return self.visitStatements(if_block.statements);
+                    return self.visitStatements(curr_else.statements);
                 }
             } else {
                 return self.visitStatements(curr_else.statements);
@@ -506,7 +527,9 @@ pub const Interpreter = struct {
         dbg.print("{}", .{lhs_val}, @src());
         dbg.print("{}", .{rhs_val}, @src());
 
-        const result_val = try self.computeBinOp(binop.token.type, lhs_val, rhs_val);
+        const result_val = self.computeBinOp(binop.token.type, lhs_val, rhs_val) catch |e| {
+            return EvalResult.failure(.{ .type = @as(Error, @errorCast(e)), .msg = "" });
+        };
         return EvalResult.ok(result_val);
     }
 

@@ -113,9 +113,9 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
     - [x] Slicing (`s[lo..hi]` → substring, bounds-checked)
   - [ ] Arrays
     - [x] Array literals (`[]`, `[e1, e2, ...]`)
-    - [ ] Array arithmetics
+    - [x] Array concatenation (`a + b` → new array)
     - [x] Subscripting (read `a[i]` + write `a[i] = x`, bounds-checked)
-    - [ ] Slicing
+    - [x] Slicing (`a[lo..hi]` → new array, bounds-checked)
 
 ## Resources
 
