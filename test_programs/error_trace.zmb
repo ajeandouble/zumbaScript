@@ -1,0 +1,7 @@
+a = [1, 2];
+function bad() {
+    return a[9];
+}
+function main() {
+    return bad();
+}

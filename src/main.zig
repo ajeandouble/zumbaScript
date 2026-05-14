@@ -5,8 +5,10 @@ const Token = @import("tokens.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
 const Parser = @import("./parser.zig").Parser;
 const Interpreter = @import("./interpreter.zig").Interpreter;
+const Program = @import("./ast_nodes.zig").Program;
 
 const MAX_STDIN_SIZE = 4096;
+const INTERPRETER_STACK_SIZE = 64 * 1024 * 1024; // 64 MB — enough for 1000 interpreter frames
 
 fn parseArgs(args: [][:0]u8) !void {
     var i: usize = 1;
@@ -21,6 +23,26 @@ fn parseArgs(args: [][:0]u8) !void {
             return error{WrongArgument}.WrongArgument;
         }
     }
+}
+
+const ThreadContext = struct {
+    ast: *Program,
+    allocator: std.mem.Allocator,
+    source_lines: []const []const u8,
+    ret: i64 = 0,
+    err: ?anyerror = null,
+};
+
+fn runInterpreter(ctx: *ThreadContext) void {
+    var interpreter = Interpreter.init(ctx.ast, ctx.allocator, ctx.source_lines) catch |e| {
+        ctx.err = e;
+        return;
+    };
+    defer interpreter.deinit();
+    ctx.ret = interpreter.interpret() catch |e| {
+        ctx.err = e;
+        return;
+    };
 }
 
 pub fn main() !u8 {
@@ -48,11 +70,18 @@ pub fn main() !u8 {
     const ast = try parser.parse();
     defer parser.deinit();
 
-    var interpreter = try Interpreter.init(ast, allocator);
-    const ret_raw = try interpreter.interpret();
-    const ret_u8: u8 = @intCast(@min(@max(ret_raw, 0), 255));
+    var line_buf = std.ArrayList([]const u8){};
+    defer line_buf.deinit(allocator);
+    var line_it = std.mem.splitScalar(u8, input_stdin, '\n');
+    while (line_it.next()) |line| try line_buf.append(allocator, line);
+
+    var ctx = ThreadContext{ .ast = ast, .allocator = allocator, .source_lines = line_buf.items };
+    const thread = try std.Thread.spawn(.{ .stack_size = INTERPRETER_STACK_SIZE }, runInterpreter, .{&ctx});
+    thread.join();
+    if (ctx.err) |e| return e;
+
+    const ret_u8: u8 = @intCast(@min(@max(ctx.ret, 0), 255));
     dbg.print("ret: {}\n", .{ret_u8}, @src());
-    defer interpreter.deinit();
     return ret_u8;
 }
 

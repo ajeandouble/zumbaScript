@@ -22,11 +22,13 @@ const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
-const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow, IndexOutOfBounds };
+const MAX_CALL_DEPTH = 1000;
+const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow, IndexOutOfBounds, CallStackOverflow };
 const ControlFlow = enum { Continue, Break, Return };
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: *String, array: []Value, void: void };
-const EvalResultErr = struct { type: Error, msg: []u8 };
+const TraceEntry = struct { name: []const u8, line: usize };
+const EvalResultErr = struct { type: Error, line: usize = 0, msg: []const u8 = "" };
 const EvalResult = union(enum) {
     const Self = @This();
     value: Value,
@@ -93,14 +95,27 @@ pub const Interpreter = struct {
     global_funcs: std.StringHashMap(*const FunctionDecl),
     owned_strings: std.ArrayList(*String),
     owned_arrays: std.ArrayList([]Value),
+    source_lines: []const []const u8,
+    call_trace: std.ArrayList(TraceEntry),
+    call_depth: usize = 0,
     ast: *const Program = undefined,
 
-    pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
+    pub fn init(ast: *Program, allocator: std.mem.Allocator, source_lines: []const []const u8) !Self {
         const stack = try std.ArrayList(StackFrame).initCapacity(allocator, 1024);
         const global_funcs = std.StringHashMap(*const FunctionDecl).init(allocator);
         const owned_strings = std.ArrayList(*String){};
         const owned_arrays = std.ArrayList([]Value){};
-        return Self{ .allocator = allocator, .ast = ast, .stack = stack, .global_funcs = global_funcs, .owned_strings = owned_strings, .owned_arrays = owned_arrays };
+        const call_trace = std.ArrayList(TraceEntry){};
+        return Self{
+            .allocator = allocator,
+            .ast = ast,
+            .stack = stack,
+            .global_funcs = global_funcs,
+            .owned_strings = owned_strings,
+            .owned_arrays = owned_arrays,
+            .source_lines = source_lines,
+            .call_trace = call_trace,
+        };
     }
 
     pub fn deinit(self: *Self) void {
@@ -122,6 +137,7 @@ pub const Interpreter = struct {
             self.allocator.free(arr);
         }
         self.owned_arrays.deinit(self.allocator);
+        self.call_trace.deinit(self.allocator);
     }
 
     pub inline fn isTruethy(value: Value) !bool {
@@ -256,7 +272,7 @@ pub const Interpreter = struct {
         return switch (try target_res.getValue()) {
             .string => |s| {
                 if (idx < 0 or idx >= @as(i64, @intCast(s.value.len)))
-                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .line = node.token.line });
                 const i: usize = @intCast(idx);
                 const ch = try String.initFromSlice(node.token, s.value[i .. i + 1], self.allocator);
                 const ptr = try self.allocator.create(String);
@@ -266,11 +282,11 @@ pub const Interpreter = struct {
             },
             .array => |arr| {
                 if (idx < 0 or idx >= @as(i64, @intCast(arr.len)))
-                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .line = node.token.line });
                 const i: usize = @intCast(idx);
                 return EvalResult.ok(arr[i]);
             },
-            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+            else => EvalResult.failure(.{ .type = Error.NotImplemented, .line = node.token.line }),
         };
     }
 
@@ -286,7 +302,7 @@ pub const Interpreter = struct {
         return switch (try target_res.getValue()) {
             .string => |s| {
                 if (lo_raw < 0 or hi_raw < 0 or lo_raw > hi_raw or @as(usize, @intCast(hi_raw)) > s.value.len)
-                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .line = node.token.line });
                 const lo: usize = @intCast(lo_raw);
                 const hi: usize = @intCast(hi_raw);
                 const ptr = try self.allocator.create(String);
@@ -296,7 +312,7 @@ pub const Interpreter = struct {
             },
             .array => |arr| {
                 if (lo_raw < 0 or hi_raw < 0 or lo_raw > hi_raw or @as(usize, @intCast(hi_raw)) > arr.len)
-                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                    return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .line = node.token.line });
                 const lo: usize = @intCast(lo_raw);
                 const hi: usize = @intCast(hi_raw);
                 const buf = try self.allocator.alloc(Value, hi - lo);
@@ -304,7 +320,7 @@ pub const Interpreter = struct {
                 try self.owned_arrays.append(self.allocator, buf);
                 return EvalResult.ok(.{ .array = buf });
             },
-            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+            else => EvalResult.failure(.{ .type = Error.NotImplemented, .line = node.token.line }),
         };
     }
 
@@ -345,22 +361,51 @@ pub const Interpreter = struct {
         if (frames.len > 1) {
             if (frames[0].symbols.get(node.id)) |r| return r;
         }
-        return EvalResult.failure(.{ .type = Error.VariableIsNotDeclared, .msg = "" });
+        return EvalResult.failure(.{ .type = Error.VariableIsNotDeclared, .line = node.token.line });
     }
 
     fn visitFuncCall(self: *Self, func_call: *const FunctionCall) anyerror!EvalResult {
         dbg.print("\n", .{}, @src());
         const id = func_call.id;
         if (self.global_funcs.get(id)) |func| {
+            if (self.call_depth >= MAX_CALL_DEPTH)
+                return EvalResult.failure(.{ .type = Error.CallStackOverflow, .line = func_call.token.line });
+            if (func_call.args.items.len != func.args.items.len)
+                return EvalResult.failure(.{ .type = Error.InterpreterError, .line = func_call.token.line });
+
+            // Evaluate arguments in the caller's frame before pushing the callee's frame.
+            var arg_vals = try self.allocator.alloc(Value, func_call.args.items.len);
+            defer self.allocator.free(arg_vals);
+            for (func_call.args.items, 0..) |arg_node, i| {
+                const res = try self.visit(arg_node);
+                if (res.isError()) return res;
+                arg_vals[i] = try res.getValue();
+            }
+
+            try self.call_trace.append(self.allocator, .{ .name = id, .line = func_call.token.line });
             try self.pushStackFrame();
+            self.call_depth += 1;
+
+            // Bind parameters in the callee's frame.
+            const frame = &self.stack.items[self.stack.items.len - 1];
+            for (func.args.items, 0..) |param_node, i| {
+                const param_name = param_node.variable.id;
+                const key = self.allocator.dupe(u8, param_name) catch
+                    return EvalResult.failure(.{ .type = Error.InterpreterError, .line = func_call.token.line });
+                frame.symbols.put(key, EvalResult.ok(arg_vals[i])) catch
+                    return EvalResult.failure(.{ .type = Error.InterpreterError, .line = func_call.token.line });
+            }
+
             const result = try self.visitStatements(func.statements);
+            self.call_depth -= 1;
             try self.popStackFrame();
+            if (!result.isError()) _ = self.call_trace.pop();
             return switch (result) {
                 .return_val => EvalResult.ok(result.return_val),
                 else => result,
             };
         } else {
-            return EvalResult.failure(.{ .type = Error.FunctionIsNotDeclared, .msg = "" });
+            return EvalResult.failure(.{ .type = Error.FunctionIsNotDeclared, .line = func_call.token.line });
         }
     }
 
@@ -371,7 +416,7 @@ pub const Interpreter = struct {
             return cond_res;
         }
         const if_cond_val: Value = try cond_res.getValue();
-        const is_if_truethy = isTruethy(if_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+        const is_if_truethy = isTruethy(if_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .line = if_block.token.line });
         if (is_if_truethy) {
             return self.visitStatements(if_block.statements);
         }
@@ -383,7 +428,7 @@ pub const Interpreter = struct {
                     return else_res;
                 }
                 const else_cond_val = try else_res.getValue();
-                const is_else_truethy = isTruethy(else_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+                const is_else_truethy = isTruethy(else_cond_val) catch |err| return EvalResult.failure(.{ .type = err, .line = curr_else.token.line });
                 if (is_else_truethy) {
                     return self.visitStatements(curr_else.statements);
                 }
@@ -404,7 +449,7 @@ pub const Interpreter = struct {
             if (cond_res.isError()) {
                 return cond_res;
             }
-            const cond_res_val = cond_res.getValue() catch |err| return EvalResult.failure(.{ .type = err, .msg = "" });
+            const cond_res_val = cond_res.getValue() catch |err| return EvalResult.failure(.{ .type = err, .line = while_block.token.line });
             const is_truethy = try isTruethy(cond_res_val);
             if (!is_truethy) break;
 
@@ -456,7 +501,7 @@ pub const Interpreter = struct {
             .subscript => self.visitSubscript(&node.subscript),
             .slice => self.visitSlice(&node.slice),
             .array => self.visitArray(&node.array),
-            else => EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+            else => EvalResult.failure(.{ .type = Error.NotImplemented, .line = 0 }),
         };
     }
 
@@ -470,8 +515,8 @@ pub const Interpreter = struct {
                 if (locals_ptr.*.getPtr(v.id)) |val_ptr| {
                     val_ptr.* = rhs_result;
                 } else {
-                    const key = self.allocator.dupe(u8, v.id) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
-                    locals_ptr.*.put(key, rhs_result) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" });
+                    const key = self.allocator.dupe(u8, v.id) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .line = binop.token.line });
+                    locals_ptr.*.put(key, rhs_result) catch return EvalResult.failure(.{ .type = Error.InterpreterError, .line = binop.token.line });
                 }
                 var it = last_item_ptr.*.symbols.iterator();
                 while (it.next()) |item| {
@@ -485,14 +530,14 @@ pub const Interpreter = struct {
                 switch (target_val) {
                     .array => |arr| {
                         if (idx_raw < 0 or idx_raw >= @as(i64, @intCast(arr.len)))
-                            return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .msg = "" });
+                            return EvalResult.failure(.{ .type = Error.IndexOutOfBounds, .line = sub.token.line });
                         const i: usize = @intCast(idx_raw);
                         arr[i] = try rhs_result.getValue();
                     },
-                    else => return EvalResult.failure(.{ .type = Error.NotImplemented, .msg = "" }),
+                    else => return EvalResult.failure(.{ .type = Error.NotImplemented, .line = sub.token.line }),
                 }
             },
-            else => return EvalResult.failure(.{ .type = Error.InterpreterError, .msg = "" }),
+            else => return EvalResult.failure(.{ .type = Error.InterpreterError, .line = binop.token.line }),
         }
         return rhs_result;
     }
@@ -528,7 +573,7 @@ pub const Interpreter = struct {
         dbg.print("{}", .{rhs_val}, @src());
 
         const result_val = self.computeBinOp(binop.token.type, lhs_val, rhs_val) catch |e| {
-            return EvalResult.failure(.{ .type = @as(Error, @errorCast(e)), .msg = "" });
+            return EvalResult.failure(.{ .type = @as(Error, @errorCast(e)), .line = binop.token.line });
         };
         return EvalResult.ok(result_val);
     }
@@ -542,18 +587,46 @@ pub const Interpreter = struct {
             .minus => switch (val) {
                 .integer => |i| EvalResult.ok(.{ .integer = -i }),
                 .float => |f| EvalResult.ok(.{ .float = -f }),
-                else => EvalResult.failure(.{ .type = Error.MismatchingBinOpTypes, .msg = "" }),
+                else => EvalResult.failure(.{ .type = Error.MismatchingBinOpTypes, .line = unaryop.token.line }),
             },
             .not_op => EvalResult.ok(.{ .integer = @intFromBool(!try isTruethy(val)) }),
             else => result,
         };
     }
 
-    fn printRuntimeError(e: EvalResultErr) void {
+    fn printRuntimeError(self: *const Self, e: EvalResultErr) void {
         const stderr = std.fs.File.stderr();
         stderr.writeAll("Runtime error: ") catch {};
         stderr.writeAll(@errorName(e.type)) catch {};
         stderr.writeAll("\n") catch {};
+        if (e.line < self.source_lines.len) {
+            var buf: [32]u8 = undefined;
+            const prefix = std.fmt.bufPrint(&buf, "  line {} | ", .{e.line + 1}) catch "  | ";
+            stderr.writeAll(prefix) catch {};
+            stderr.writeAll(self.source_lines[e.line]) catch {};
+            stderr.writeAll("\n") catch {};
+        }
+        const MAX_TRACE_LINES = 100;
+        const total = self.call_trace.items.len;
+        const print_count = @min(total, MAX_TRACE_LINES);
+        var i: usize = total;
+        var printed: usize = 0;
+        while (i > 0 and printed < print_count) {
+            i -= 1;
+            printed += 1;
+            const frame = self.call_trace.items[i];
+            var buf: [256]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buf, "  in {s} (called at line {})\n", .{ frame.name, frame.line + 1 }) catch "";
+            stderr.writeAll(msg) catch {};
+        }
+        if (total > MAX_TRACE_LINES) {
+            var buf: [64]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buf, "  ... ({} more frames)\n", .{total - MAX_TRACE_LINES}) catch "";
+            stderr.writeAll(msg) catch {};
+        }
+        if (total == 0) {
+            stderr.writeAll("  in <global>\n") catch {};
+        }
     }
 
     pub fn interpret(self: *Self) !i64 {
@@ -593,7 +666,7 @@ pub const Interpreter = struct {
         }
         if (ret.isError()) {
             try self.popStackFrame();
-            printRuntimeError(ret.err);
+            self.printRuntimeError(ret.err);
             return 1;
         }
 
@@ -608,7 +681,7 @@ pub const Interpreter = struct {
                     else => 0,
                 },
                 .err => |e| {
-                    printRuntimeError(e);
+                    self.printRuntimeError(e);
                     return 1;
                 },
                 else => 0,
@@ -622,7 +695,7 @@ pub const Interpreter = struct {
                 else => 0,
             },
             .err => |e| {
-                printRuntimeError(e);
+                self.printRuntimeError(e);
                 return 1;
             },
             else => 0,
@@ -641,7 +714,7 @@ test "visitInteger should correctly return the integer value" {
     defer dummyAST.functions.deinit(std.testing.allocator);
     defer dummyAST.global_statements.deinit(std.testing.allocator);
 
-    var interp = try Interpreter.init(&dummyAST, std.testing.allocator);
+    var interp = try Interpreter.init(&dummyAST, std.testing.allocator, &[_][]const u8{});
     defer interp.deinit();
 
     const dummyToken = Token{ .lexeme = "", .allocator = undefined, .type = TokenType.eof, .line = 0 };

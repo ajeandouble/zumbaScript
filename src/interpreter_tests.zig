@@ -17,11 +17,11 @@ const BreakStatement = @import("./ast_nodes.zig").BreakStatement;
 const ContinueStatement = @import("./ast_nodes.zig").ContinueStatement;
 const ReturnStatement = @import("./ast_nodes.zig").ReturnStatement;
 const FunctionDecl = @import("./ast_nodes.zig").FunctionDecl;
+const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
 const Subscript = @import("./ast_nodes.zig").Subscript;
 const Slice = @import("./ast_nodes.zig").Slice;
 const Array = @import("./ast_nodes.zig").Array;
 
-const expect = std.testing.expectEqual;
 const expectEqual = std.testing.expectEqual;
 
 test "control flow: while, nested if break and nested else continue" {
@@ -115,50 +115,21 @@ test "control flow: while, nested if break and nested else continue" {
         .global_statements = global_statements,
     };
 
-    var interp = try Interpreter.init(&dummyAST, allocator);
+    var interp = try Interpreter.init(&dummyAST, allocator, &[_][]const u8{});
     defer interp.deinit();
 
     const result = try interp.interpret();
     try std.testing.expectEqual(@as(i64, 42), result);
 }
 
-// Helper: build a minimal main() that returns a single expression node.
-fn makeMainReturning(allocator: std.mem.Allocator, expr: *Node) !Program {
-    const ret_stmts = try allocator.create(std.ArrayList(*Node));
-    ret_stmts.* = std.ArrayList(*Node){};
-    const ret_node = try allocator.create(Node);
-    ret_node.* = Node{ .ret = ReturnStatement{ .expr = expr } };
-    try ret_stmts.append(allocator, ret_node);
-
-    const main_node = try allocator.create(Node);
-    main_node.* = Node{ .func_decl = FunctionDecl{
-        .id = "main",
-        .args = std.ArrayList(*Node){},
-        .statements = ret_stmts.*,
-    } };
-
-    var functions = std.ArrayList(*Node){};
-    try functions.append(allocator, main_node);
-
-    return Program{
-        .id = "",
-        .functions = functions,
-        .global_statements = std.ArrayList(*Node){},
-    };
-}
-
 test "typing: zero integer is falsy via if condition" {
     const allocator = std.testing.allocator;
     const eof_tok = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
-    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
-    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
 
     // Build: if (0) { return 1 } else { return 0 }
     var num_0 = Node{ .num = Num{ .value = 0, .token = eof_tok } };
     var num_1 = Node{ .num = Num{ .value = 1, .token = eof_tok } };
     var num_0b = Node{ .num = Num{ .value = 0, .token = eof_tok } };
-    _ = assign_tok;
-    _ = eq_tok;
 
     var ret1 = Node{ .ret = ReturnStatement{ .expr = &num_1 } };
     var ret0 = Node{ .ret = ReturnStatement{ .expr = &num_0b } };
@@ -189,7 +160,7 @@ test "typing: zero integer is falsy via if condition" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = functions, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 0), try interp.interpret());
 }
@@ -229,7 +200,7 @@ test "typing: nonzero integer is truthy via if condition" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = functions, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -275,7 +246,7 @@ test "typing: !0 == 1 and !42 == 0" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = functions, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -314,7 +285,7 @@ test "typing: string equality - same content" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = functions, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -353,7 +324,7 @@ test "typing: string equality - different content" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = functions, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -398,7 +369,7 @@ test "string concatenation: hello + world" {
     defer sc_global.deinit(allocator);
 
     var sc_ast = Program{ .id = "", .functions = sc_funcs, .global_statements = sc_global };
-    var sc_interp = try Interpreter.init(&sc_ast, allocator);
+    var sc_interp = try Interpreter.init(&sc_ast, allocator, &[_][]const u8{});
     defer sc_interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try sc_interp.interpret());
 }
@@ -429,7 +400,7 @@ test "string + integer returns MismatchingBinOpTypes" {
     defer err_global.deinit(allocator);
 
     var err_ast = Program{ .id = "", .functions = err_funcs, .global_statements = err_global };
-    var err_interp = try Interpreter.init(&err_ast, allocator);
+    var err_interp = try Interpreter.init(&err_ast, allocator, &[_][]const u8{});
     defer err_interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try err_interp.interpret());
 }
@@ -477,7 +448,7 @@ test "string subscript in-bounds returns single char" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -512,7 +483,7 @@ test "string subscript out-of-bounds returns IndexOutOfBounds" {
     defer global.deinit(allocator);
 
     var ast = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&ast, allocator);
+    var interp = try Interpreter.init(&ast, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -548,7 +519,7 @@ test "string slice in-bounds returns correct substring" {
     defer global.deinit(allocator);
 
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -578,7 +549,7 @@ test "string slice lo > hi returns IndexOutOfBounds" {
     defer global2.deinit(allocator);
 
     var prog2 = Program{ .id = "", .functions = funcs2, .global_statements = global2 };
-    var interp2 = try Interpreter.init(&prog2, allocator);
+    var interp2 = try Interpreter.init(&prog2, allocator, &[_][]const u8{});
     defer interp2.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp2.interpret());
 }
@@ -608,7 +579,7 @@ test "string slice hi > len returns IndexOutOfBounds" {
     defer global3.deinit(allocator);
 
     var prog3 = Program{ .id = "", .functions = funcs3, .global_statements = global3 };
-    var interp3 = try Interpreter.init(&prog3, allocator);
+    var interp3 = try Interpreter.init(&prog3, allocator, &[_][]const u8{});
     defer interp3.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp3.interpret());
 }
@@ -639,7 +610,7 @@ test "empty array literal evaluates without error" {
     defer global_arr.deinit(allocator);
 
     var prog_arr = Program{ .id = "", .functions = funcs_arr, .global_statements = global_arr };
-    var interp_arr = try Interpreter.init(&prog_arr, allocator);
+    var interp_arr = try Interpreter.init(&prog_arr, allocator, &[_][]const u8{});
     defer interp_arr.deinit();
     try std.testing.expectEqual(@as(i64, 0), try interp_arr.interpret());
 }
@@ -678,7 +649,7 @@ test "array literal with elements evaluates without error" {
     defer global3e.deinit(allocator);
 
     var prog3e = Program{ .id = "", .functions = funcs3e, .global_statements = global3e };
-    var interp3e = try Interpreter.init(&prog3e, allocator);
+    var interp3e = try Interpreter.init(&prog3e, allocator, &[_][]const u8{});
     defer interp3e.deinit();
     try std.testing.expectEqual(@as(i64, 0), try interp3e.interpret());
 }
@@ -724,7 +695,7 @@ test "array subscript read returns correct element" {
     defer rd_global.deinit(allocator);
 
     var rd_prog = Program{ .id = "", .functions = rd_funcs, .global_statements = rd_global };
-    var rd_interp = try Interpreter.init(&rd_prog, allocator);
+    var rd_interp = try Interpreter.init(&rd_prog, allocator, &[_][]const u8{});
     defer rd_interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try rd_interp.interpret());
 }
@@ -777,7 +748,7 @@ test "array subscript write mutates in place" {
     defer wr_global.deinit(allocator);
 
     var wr_prog = Program{ .id = "", .functions = wr_funcs, .global_statements = wr_global };
-    var wr_interp = try Interpreter.init(&wr_prog, allocator);
+    var wr_interp = try Interpreter.init(&wr_prog, allocator, &[_][]const u8{});
     defer wr_interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try wr_interp.interpret());
 }
@@ -814,7 +785,7 @@ test "array subscript read out of bounds returns error" {
     defer ob_global.deinit(allocator);
 
     var ob_prog = Program{ .id = "", .functions = ob_funcs, .global_statements = ob_global };
-    var ob_interp = try Interpreter.init(&ob_prog, allocator);
+    var ob_interp = try Interpreter.init(&ob_prog, allocator, &[_][]const u8{});
     defer ob_interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try ob_interp.interpret());
 }
@@ -860,7 +831,7 @@ test "array subscript write out of bounds returns error" {
     defer global.deinit(allocator);
 
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try std.testing.expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -920,7 +891,7 @@ test "array concat produces new array with all elements" {
     var global = std.ArrayList(*Node){};
     defer global.deinit(allocator);
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try expectEqual(@as(i64, 4), try interp.interpret());
 }
@@ -960,7 +931,7 @@ test "array + non-array returns error" {
     var global = std.ArrayList(*Node){};
     defer global.deinit(allocator);
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -1013,7 +984,7 @@ test "array slice returns correct sub-array" {
     var global = std.ArrayList(*Node){};
     defer global.deinit(allocator);
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try expectEqual(@as(i64, 20), try interp.interpret());
 }
@@ -1062,7 +1033,7 @@ test "array slice lo == hi returns empty array" {
     var global = std.ArrayList(*Node){};
     defer global.deinit(allocator);
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try expectEqual(@as(i64, 1), try interp.interpret());
 }
@@ -1102,7 +1073,176 @@ test "array slice out of bounds returns error" {
     var global = std.ArrayList(*Node){};
     defer global.deinit(allocator);
     var prog = Program{ .id = "", .functions = funcs, .global_statements = global };
-    var interp = try Interpreter.init(&prog, allocator);
+    var interp = try Interpreter.init(&prog, allocator, &[_][]const u8{});
     defer interp.deinit();
     try expectEqual(@as(i64, 1), try interp.interpret());
+}
+
+test "function argument is bound in callee frame" {
+    // function identity(x) { return x; }
+    // function main() { return identity(42); }  → 42
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+
+    var param_decl = Node{ .variable = Variable{ .id = "x", .token = eof } };
+    var ret_x = Node{ .variable = Variable{ .id = "x", .token = eof } };
+    var ret_stmt = Node{ .ret = ReturnStatement{ .expr = &ret_x } };
+    var id_body = std.ArrayList(*Node){};
+    try id_body.append(allocator, &ret_stmt);
+    defer id_body.deinit(allocator);
+    var id_params = std.ArrayList(*Node){};
+    try id_params.append(allocator, &param_decl);
+    defer id_params.deinit(allocator);
+    var id_func = Node{ .func_decl = FunctionDecl{ .id = "identity", .args = id_params, .statements = id_body } };
+
+    var n42 = Node{ .num = Num{ .token = eof, .value = 42 } };
+    var call_args = std.ArrayList(*Node){};
+    try call_args.append(allocator, &n42);
+    defer call_args.deinit(allocator);
+    var call = Node{ .func_call = FunctionCall{ .token = eof, .id = "identity", .args = call_args } };
+    var main_ret = Node{ .ret = ReturnStatement{ .expr = &call } };
+    var main_body = std.ArrayList(*Node){};
+    try main_body.append(allocator, &main_ret);
+    defer main_body.deinit(allocator);
+    var main_params = std.ArrayList(*Node){};
+    defer main_params.deinit(allocator);
+    var main_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = main_params, .statements = main_body } };
+
+    var funcs2 = std.ArrayList(*Node){};
+    try funcs2.append(allocator, &id_func);
+    try funcs2.append(allocator, &main_func);
+    defer funcs2.deinit(allocator);
+    var global2 = std.ArrayList(*Node){};
+    defer global2.deinit(allocator);
+    var prog2 = Program{ .id = "", .functions = funcs2, .global_statements = global2 };
+    var interp2 = try Interpreter.init(&prog2, allocator, &[_][]const u8{});
+    defer interp2.deinit();
+    try expectEqual(@as(i64, 42), try interp2.interpret());
+}
+
+test "recursive call with argument returns correct value" {
+    // function f(n) { if (n == 0) { return 42; } return f(0); }
+    // function main() { return f(1); }  → 42  (recurses once, then base case)
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const eq_tok = Token{ .type = TokenType.eq, .lexeme = "==", .line = 0, .allocator = allocator };
+
+    var param_n = Node{ .variable = Variable{ .id = "n", .token = eof } };
+    var cond_n = Node{ .variable = Variable{ .id = "n", .token = eof } };
+    var cond_zero = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var cond = Node{ .binop = BinOp{ .token = eq_tok, .lhs = &cond_n, .rhs = &cond_zero } };
+
+    var ret_42_node = Node{ .num = Num{ .token = eof, .value = 42 } };
+    var base_ret = Node{ .ret = ReturnStatement{ .expr = &ret_42_node } };
+    var if_body = std.ArrayList(*Node){};
+    try if_body.append(allocator, &base_ret);
+    defer if_body.deinit(allocator);
+    var if_block = Node{ .if_block = IfBlock{ .condition = &cond, .statements = if_body } };
+
+    var rec_arg = Node{ .num = Num{ .token = eof, .value = 0 } };
+    var rec_args = std.ArrayList(*Node){};
+    try rec_args.append(allocator, &rec_arg);
+    defer rec_args.deinit(allocator);
+    var rec_call = Node{ .func_call = FunctionCall{ .token = eof, .id = "f", .args = rec_args } };
+    var rec_ret = Node{ .ret = ReturnStatement{ .expr = &rec_call } };
+
+    var f_body = std.ArrayList(*Node){};
+    try f_body.append(allocator, &if_block);
+    try f_body.append(allocator, &rec_ret);
+    defer f_body.deinit(allocator);
+    var f_params = std.ArrayList(*Node){};
+    try f_params.append(allocator, &param_n);
+    defer f_params.deinit(allocator);
+    var f_func = Node{ .func_decl = FunctionDecl{ .id = "f", .args = f_params, .statements = f_body } };
+
+    var main_arg = Node{ .num = Num{ .token = eof, .value = 1 } };
+    var main_call_args = std.ArrayList(*Node){};
+    try main_call_args.append(allocator, &main_arg);
+    defer main_call_args.deinit(allocator);
+    var main_call = Node{ .func_call = FunctionCall{ .token = eof, .id = "f", .args = main_call_args } };
+    var main_ret = Node{ .ret = ReturnStatement{ .expr = &main_call } };
+    var main_body = std.ArrayList(*Node){};
+    try main_body.append(allocator, &main_ret);
+    defer main_body.deinit(allocator);
+    var main_params = std.ArrayList(*Node){};
+    defer main_params.deinit(allocator);
+    var main_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = main_params, .statements = main_body } };
+
+    var funcs3 = std.ArrayList(*Node){};
+    try funcs3.append(allocator, &f_func);
+    try funcs3.append(allocator, &main_func);
+    defer funcs3.deinit(allocator);
+    var global3 = std.ArrayList(*Node){};
+    defer global3.deinit(allocator);
+    var prog3 = Program{ .id = "", .functions = funcs3, .global_statements = global3 };
+    var interp3 = try Interpreter.init(&prog3, allocator, &[_][]const u8{});
+    defer interp3.deinit();
+    try expectEqual(@as(i64, 42), try interp3.interpret());
+}
+
+test "global variable is visible from function body" {
+    // x = 42;  function main() { return x; }  → 42
+    const allocator = std.testing.allocator;
+    const eof = Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = allocator };
+    const assign_tok = Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = allocator };
+
+    var var_x_lhs = Node{ .variable = Variable{ .id = "x", .token = eof } };
+    var n42g = Node{ .num = Num{ .token = eof, .value = 42 } };
+    var global_assign = Node{ .binop = BinOp{ .token = assign_tok, .lhs = &var_x_lhs, .rhs = &n42g } };
+    var global_stmts = std.ArrayList(*Node){};
+    try global_stmts.append(allocator, &global_assign);
+    defer global_stmts.deinit(allocator);
+
+    var var_x_ret = Node{ .variable = Variable{ .id = "x", .token = eof } };
+    var main_ret = Node{ .ret = ReturnStatement{ .expr = &var_x_ret } };
+    var main_body = std.ArrayList(*Node){};
+    try main_body.append(allocator, &main_ret);
+    defer main_body.deinit(allocator);
+    var main_params = std.ArrayList(*Node){};
+    defer main_params.deinit(allocator);
+    var main_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = main_params, .statements = main_body } };
+
+    var funcs5 = std.ArrayList(*Node){};
+    try funcs5.append(allocator, &main_func);
+    defer funcs5.deinit(allocator);
+    var prog5 = Program{ .id = "", .functions = funcs5, .global_statements = global_stmts };
+    var interp5 = try Interpreter.init(&prog5, allocator, &[_][]const u8{});
+    defer interp5.deinit();
+    try expectEqual(@as(i64, 42), try interp5.interpret());
+}
+
+test "duplicate function declaration is rejected" {
+    // function f() {}  function f() {}  function main() {}
+    // → error.DuplicateFunctionDeclaration from interpret()
+    const allocator = std.testing.allocator;
+
+    var body_a = std.ArrayList(*Node){};
+    defer body_a.deinit(allocator);
+    var params_a = std.ArrayList(*Node){};
+    defer params_a.deinit(allocator);
+    var f_first = Node{ .func_decl = FunctionDecl{ .id = "f", .args = params_a, .statements = body_a } };
+
+    var body_b = std.ArrayList(*Node){};
+    defer body_b.deinit(allocator);
+    var params_b = std.ArrayList(*Node){};
+    defer params_b.deinit(allocator);
+    var f_second = Node{ .func_decl = FunctionDecl{ .id = "f", .args = params_b, .statements = body_b } };
+
+    var main_body = std.ArrayList(*Node){};
+    defer main_body.deinit(allocator);
+    var main_params = std.ArrayList(*Node){};
+    defer main_params.deinit(allocator);
+    var main_func = Node{ .func_decl = FunctionDecl{ .id = "main", .args = main_params, .statements = main_body } };
+
+    var funcs6 = std.ArrayList(*Node){};
+    try funcs6.append(allocator, &f_first);
+    try funcs6.append(allocator, &f_second);
+    try funcs6.append(allocator, &main_func);
+    defer funcs6.deinit(allocator);
+    var global6 = std.ArrayList(*Node){};
+    defer global6.deinit(allocator);
+    var prog6 = Program{ .id = "", .functions = funcs6, .global_statements = global6 };
+    var interp6 = try Interpreter.init(&prog6, allocator, &[_][]const u8{});
+    defer interp6.deinit();
+    try std.testing.expectError(error.DuplicateFunctionDeclaration, interp6.interpret());
 }

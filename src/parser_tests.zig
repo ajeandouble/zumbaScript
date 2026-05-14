@@ -8,7 +8,6 @@ const Node = @import("./ast_nodes.zig").Node;
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 
-// Tests
 fn setupParserTest(tokens: []Token) !Parser {
     const allocator = std.testing.allocator;
     return try Parser.init(tokens, allocator);
@@ -18,7 +17,6 @@ fn destroyParser(parser: *Parser) void {
     parser.deinit();
 }
 
-// Helper type checking functions
 fn isBinOp(node: *const Node) bool {
     return switch (node.*) {
         .binop => true,
@@ -202,7 +200,6 @@ test "parseExpr - arithmetic, parentheses, variable, comparison" {
         Token{ .type = TokenType.integer, .lexeme = "3", .line = 0, .allocator = undefined },
         Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
     };
-    // // 1 [+] ( a > 9 == 3 )
     var parser = try setupParserTest(&tokens);
     defer parser.deinit();
     const ast = try parser.parseExpr();
@@ -585,7 +582,7 @@ test "parseProgram - main, if block with statement and else block" {
     // Test else block has no condition
     try std.testing.expect(else_block.condition == null);
 
-    // // Test else block statements
+    // Test else block statements
     try std.testing.expectEqual(1, else_block.statements.items.len);
     const else_block_stmt = else_block.statements.items[0];
     try std.testing.expect(isNum(else_block_stmt));
@@ -745,7 +742,7 @@ test "parseProgram - main, if block with statement, else if block and else block
     const else_if_block_expr_stmt = else_block.condition.?.num;
     try std.testing.expectEqual(1, else_if_block_expr_stmt.value);
 
-    // // Test NO else if block statements
+    // Test NO else if block statements
     try std.testing.expectEqual(0, else_block.statements.items.len);
 
     // Test last else block

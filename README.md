@@ -111,6 +111,7 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
     - [x] String concatenation (`+`)
     - [x] Subscripting (`s[i]` → 1-char string, bounds-checked)
     - [x] Slicing (`s[lo..hi]` → substring, bounds-checked)
+  - [x] Runtime error trace (error name + source line + call chain)
   - [ ] Arrays
     - [x] Array literals (`[]`, `[e1, e2, ...]`)
     - [x] Array concatenation (`a + b` → new array)

@@ -209,7 +209,6 @@ pub const Parser = struct {
             },
             .lbrack => return try self.parseArrayDecl(),
             else => {
-                dbg.print("wtf", .{}, @src());
                 return Error.BadToken;
             },
         }

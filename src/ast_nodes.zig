@@ -21,7 +21,7 @@ pub const String = struct {
 
     pub fn initEmpty(token: Token, allocator: std.mem.Allocator) !String {
         return String{
-            .token = token, // FIXME: since the stirng is mutable it doesn't make sense to save lexeme
+            .token = token,
             .value = try allocator.alloc(u8, 0),
             .allocator = allocator,
         };
@@ -30,7 +30,7 @@ pub const String = struct {
     pub fn initFromSlice(token: Token, slice: []const u8, allocator: std.mem.Allocator) !String {
         const buf = try allocator.dupe(u8, slice);
         return String{
-            .token = token, // FIXME: since the stirng is mutable it doesn't make sense to save lexeme
+            .token = token,
             .value = buf,
             .allocator = allocator,
         };
