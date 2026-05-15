@@ -6,54 +6,76 @@ As in **_`Zumba`_** + _`Script`_ [^1]
 
 [^1]: Self-explanatory.
 
-## Grammar (so far)
+## Syntax
 
-```
-program:                            global_statements
-global_statements:                  (assignment SEMI | function_decl)* function_decl
+```zumbascript
+// Global scope: constants and shared state live outside functions
+MAX_ITER = 10;
+PI = 3.14159;
 
-function_decl:                      FUNCTION ID LPAREN function_args RPAREN compound_statement
-function_args:                      empty | function_args_list
-function_args_list:                 ID (COMMA ID)*
+struct Vec2 {
+    x;
+    y;
+}
 
-compound_statement:                 LBRACE statements_list RBRACE
-statements_list:                    (statement SEMI)*
-statement:                          expr | assignment | if_block | return_statement
+function dot(a, b) {
+    return a.x * b.x + a.y * b.y;
+}
 
-loop_compound_statement:            LBRACE loop_statements_list RBRACE
-loop_statements_list:               ((statement | loop_statement) SEMI)*
-loop_statements:					break | continue | statement
+function safe_div(a, b) {
+    if (b == 0) {
+        panic("division by zero");
+    }
+    return a / b;
+}
 
-expr:                               arithmetic ((LT | LE | EQ | GE | GT) arithmetic)*
-arithmetic:                         term ((PLUS | MINUS) term)*
-term:                               factor ((MUL | DIV) factor)*
-factor:                             PLUS factor
-								    | MINUS factor
-								    | INTEGER
-								    | LPAREN expr RPAREN
-                                    | variable
-								    | function_call
-                                    | array_subscript
-								    | STRING
+function sum_slice(arr, lo, hi) {
+    slice = arr[lo..hi];
+    total = 0.0;
+    i = 0;
+    while (i < hi - lo) {
+        total = total + slice[i];
+        i = i + 1;
+    }
+    return total;
+}
 
+function main() {
+    // Structs
+    u = Vec2 { x: 3.0, y: 4.0 };
+    v = Vec2 { x: 1.5, y: 2.5 };
+    d = dot(u, v);
 
-assignment:                         lvalue ASSIGN expr
-lvalue:                             ID | array_subscript
+    // Float arithmetic
+    circumference = 2.0 * PI * 5.0;
 
-if_block:                           IF LPAREN expr RPAREN compound_statement |  IF LPAREN expr RPAREN compound_statement else_block
-else_block:                         ELSE compound_statement | ELSE if_block
-while_block:                        WHILE LPAREN expr RPAREN loop_compound_statement
-return_statements:                  RETURN expr
+    // Arrays and slicing
+    nums = [10, 20, 30, 40, 50];
+    mid  = nums[1..4];       // [20, 30, 40]
+    s    = sum_slice(nums, 1, 4);
 
-function_call:                      ID LPAREN call_args RPAREN
-call_args:                          empty | call_args_list
-call_args_list:                     expr (COMMA expr)*
+    // Strings and subscript
+    greeting = "hello";
+    first    = greeting[0];  // "h"
+    tail     = greeting[1..5];
 
-variable:                           ID
+    // Control flow
+    i = 0;
+    result = 0;
+    while (i < MAX_ITER) {
+        if (i == 5) {
+            i = i + 1;
+            continue;
+        }
+        result = result + i;
+        i = i + 1;
+    }
 
-array_literal:                      LBRACKET array_elements RBRACKET
-array_elements:                     empty | expr (COMMA expr)
-array_subscript:                    lvalue LBRACKET expr RBRACKET
+    // safe_div(d, 0) would call panic() and exit non-zero
+    q = safe_div(d, 2.0);
+
+    return 0;
+}
 ```
 
 ## Learning Resources
