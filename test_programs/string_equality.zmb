@@ -1,0 +1,19 @@
+function main() {
+    ok = 1;
+
+    a = "hello";
+    b = "hello";
+    c = "world";
+
+    if (a == b) { } else { ok = 0; }
+    if (a == c) { ok = 0; }
+    if (a != c) { } else { ok = 0; }
+    if (a != b) { ok = 0; }
+
+    empty = "";
+    if (empty == "") { } else { ok = 0; }
+    if (empty != "") { ok = 0; }
+
+    if (ok) { return 42; }
+    return 0;
+}

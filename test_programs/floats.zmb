@@ -1,0 +1,7 @@
+// expected exit: 0
+function main() {
+    x = 1.5;
+    y = 2.5;
+    z = x + y;
+    return 0;
+}

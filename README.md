@@ -67,40 +67,67 @@ array_subscript:                    lvalue LBRACKET expr RBRACKET
   - [x] While block
     - [x] Break statement
     - [x] Continue statement
-  - [ ] Floats
-  - [ ] Arrays
-    - [ ] Array arithmetics
-    - [ ] Subscripting
-    - [ ] Slicing
-  - [ ] Strings
+  - [x] Integer arithmetic (`+` `-` `*` `/` `%`)
+  - [x] Comparison operators (`<` `<=` `==` `!=` `>=` `>`)
+  - [x] Logical operators (`&&` `||` `!`)
+  - [x] Floats
+  - [x] Strings
     - [x] String declaration
-    - [ ] String arithmetics
-    - [ ] Subscripting
-    - [ ] Slicing
-  - [ ] Structs
-  - [ ] Panic
-  - [ ] Exceptions (Index error)
+    - [x] String arithmetics (`+` concatenation)
+    - [x] Subscripting (`s[i]`)
+    - [x] Slicing (`s[lo..hi]`)
+  - [x] Arrays
+    - [x] Array literals
+    - [x] Array concatenation (`+`)
+    - [x] Subscripting (`a[i]`)
+    - [x] Slicing (`a[lo..hi]`)
+  - [x] Structs
+  - [x] `panic()` builtin
+  - [x] `//` line comments
+  - [ ] Bitwise operators (`&` `|` `^` `~` `<<` `>>`)
+  - [ ] `for` loop
+  - [ ] Standard library (`open`, `read`, `write`)
+  - [ ] Import system
 
 - [x] Interpreter
   - [x] Global statements
   - [x] Expressions
+  - [x] Integer arithmetic (`+` `-` `*` `/` `%`)
+  - [x] Comparison operators (`<` `<=` `==` `!=` `>=` `>`)
+  - [x] Logical operators (`&&` `||` `!`) with short-circuit evaluation
   - [x] Functions
   - [x] Global hoisted declarations
-  - [x] Calls
+  - [x] Calls with argument passing
+  - [x] Recursion (call depth limit: 1000)
   - [x] Control flow
-  - [x] If block
-  - [x] Else block
-  - [x] While block
-    - [x] Break statement
-  - [ ] Strings
-    - [x] String declaration
-    - [ ] String arithmetics
-    - [ ] Subscripting
-    - [ ] Slicing
-  - [ ] Arrays
-    - [ ] Array arithmetics
-    - [ ] Subscripting
-    - [ ] Slicing
+    - [x] If / else if / else block
+    - [x] While block with break and continue
+  - [x] Typing rules
+    - [x] Truthiness for all types (integer, float, string, array, object, void)
+    - [x] Unified binary op dispatch (int/float/string/array/void)
+    - [x] Int/float promotion in mixed arithmetic
+    - [x] Unary `-` and `!` for all types
+  - [x] Strings
+    - [x] String equality (`==` / `!=`)
+    - [x] String concatenation (`+`)
+    - [x] Subscripting (`s[i]` → 1-char string, bounds-checked)
+    - [x] Slicing (`s[lo..hi]` → substring, bounds-checked)
+  - [x] Floats (`f64`, int/float promotion)
+  - [x] Arrays
+    - [x] Array literals (`[]`, `[e1, e2, ...]`)
+    - [x] Array concatenation (`a + b` → new array)
+    - [x] Subscripting (read `a[i]` + write `a[i] = x`, bounds-checked)
+    - [x] Slicing (`a[lo..hi]` → new array, bounds-checked)
+  - [x] Structs (declaration, literal, field read/write)
+  - [x] Runtime error trace (error name + source line + call chain)
+  - [x] `panic(msg)` builtin
+  - [ ] Bitwise operators (`&` `|` `^` `~` `<<` `>>`)
+  - [ ] `for` loop
+  - [ ] Standard library
+    - [ ] `print(val)` / `println(val)`
+    - [ ] `len(s_or_arr)`
+    - [ ] `int(x)` / `float(x)` / `str(x)` — type coercion
+    - [ ] `open(path, mode)` / `read(fd)` / `write(fd, val)`
 
 ## Resources
 

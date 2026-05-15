@@ -8,7 +8,6 @@ const Node = @import("./ast_nodes.zig").Node;
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 
-// Tests
 fn setupParserTest(tokens: []Token) !Parser {
     const allocator = std.testing.allocator;
     return try Parser.init(tokens, allocator);
@@ -18,7 +17,6 @@ fn destroyParser(parser: *Parser) void {
     parser.deinit();
 }
 
-// Helper type checking functions
 fn isBinOp(node: *const Node) bool {
     return switch (node.*) {
         .binop => true,
@@ -202,7 +200,6 @@ test "parseExpr - arithmetic, parentheses, variable, comparison" {
         Token{ .type = TokenType.integer, .lexeme = "3", .line = 0, .allocator = undefined },
         Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
     };
-    // // 1 [+] ( a > 9 == 3 )
     var parser = try setupParserTest(&tokens);
     defer parser.deinit();
     const ast = try parser.parseExpr();
@@ -214,30 +211,30 @@ test "parseExpr - arithmetic, parentheses, variable, comparison" {
     const num_1 = ast.binop.lhs.*.num;
     try std.testing.expectEqual(num_1.value, 1);
 
-    // 1 + ( a [>] 9 == 3 )
+    // 1 + ( (a > 9) [==] 3 )  — comparisons are left-associative
     try std.testing.expect(isBinOp(ast.binop.rhs));
-    const binop_gt = ast.binop.rhs.*.binop;
+    const binop_eq = ast.binop.rhs.*.binop;
+    try std.testing.expectEqual(binop_eq.token.type, TokenType.eq);
+
+    // 1 + ( [a > 9] == 3 )
+    try std.testing.expect(isBinOp(binop_eq.lhs));
+    const binop_gt = binop_eq.lhs.*.binop;
     try std.testing.expectEqual(binop_gt.token.type, TokenType.gt);
 
     // 1 + ( [a] > 9 == 3 )
-    try std.testing.expect(isVariable((binop_gt.lhs)));
+    try std.testing.expect(isVariable(binop_gt.lhs));
     const var_a = binop_gt.lhs.*.variable;
     try std.testing.expectEqual(var_a.token.type, TokenType.id);
     try std.testing.expectEqualStrings(var_a.id, "a");
 
-    // 1 + ( a > 9 [==] 3 )
-    try std.testing.expect(isBinOp((binop_gt.rhs)));
-    const binop_eq = binop_gt.rhs.*.binop;
-    try std.testing.expectEqual(binop_eq.token.type, TokenType.eq);
-
     // 1 + ( a > [9] == 3 )
-    try std.testing.expect(isNum((binop_eq.lhs)));
-    const num_9 = binop_eq.lhs.*.num;
+    try std.testing.expect(isNum(binop_gt.rhs));
+    const num_9 = binop_gt.rhs.*.num;
     try std.testing.expectEqual(num_9.token.type, TokenType.integer);
     try std.testing.expectEqual(num_9.value, 9);
 
     // 1 + ( a > 9 == [3] )
-    try std.testing.expect(isNum((binop_eq.rhs)));
+    try std.testing.expect(isNum(binop_eq.rhs));
     const num_3 = binop_eq.rhs.*.num;
     try std.testing.expectEqual(num_3.token.type, TokenType.integer);
     try std.testing.expectEqual(num_3.value, 3);
@@ -312,8 +309,8 @@ test "parseExpr - function call - 1 arg" {
     try std.testing.expect(isFuncCall(ast));
     try std.testing.expectEqualStrings(ast.func_call.id, "a");
 
-    try std.testing.expect(isVariable(ast.func_call.*.args.items[0]));
-    const expr_b = ast.func_call.*.args.items[0].*.variable;
+    try std.testing.expect(isVariable(ast.func_call.args.items[0]));
+    const expr_b = ast.func_call.args.items[0].*.variable;
     try std.testing.expectEqual(expr_b.token.type, TokenType.id);
     try std.testing.expectEqualStrings(expr_b.token.lexeme.?, "b");
     try std.testing.expectEqualStrings(expr_b.id, "b");
@@ -334,14 +331,14 @@ test "parseExpr - function call - 2 args" {
     try std.testing.expect(isFuncCall(ast));
     try std.testing.expectEqualStrings(ast.func_call.id, "a");
 
-    try std.testing.expect(isVariable(ast.func_call.*.args.items[0]));
-    const expr_b = ast.func_call.*.args.items[0].*.variable;
+    try std.testing.expect(isVariable(ast.func_call.args.items[0]));
+    const expr_b = ast.func_call.args.items[0].*.variable;
     try std.testing.expectEqual(expr_b.token.type, TokenType.id);
     try std.testing.expectEqualStrings(expr_b.token.lexeme.?, "b");
     try std.testing.expectEqualStrings(expr_b.id, "b");
 
-    try std.testing.expect(isVariable(ast.func_call.*.args.items[1]));
-    const expr_c = ast.func_call.*.args.items[1].*.variable;
+    try std.testing.expect(isVariable(ast.func_call.args.items[1]));
+    const expr_c = ast.func_call.args.items[1].*.variable;
     try std.testing.expectEqual(expr_c.token.type, TokenType.id);
     try std.testing.expectEqualStrings(expr_c.token.lexeme.?, "c");
     try std.testing.expectEqualStrings(expr_c.id, "c");
@@ -363,15 +360,15 @@ test "parseCompoundStatement - function call - 2 args - 2 exprs" {
     const ast = try parser.parseCompoundStatement();
 
     try std.testing.expect(isBinOp(ast.items[0]));
-    const statement_1 = ast.items[0].binop.*;
+    const statement_1 = ast.items[0].binop;
     try std.testing.expectEqual(statement_1.token.type, TokenType.assign);
 
     try std.testing.expect(isVariable(statement_1.lhs));
-    const var_a = statement_1.lhs.variable.*;
+    const var_a = statement_1.lhs.variable;
     try std.testing.expectEqualStrings(var_a.id, "a");
 
     try std.testing.expect(isVariable(statement_1.rhs));
-    const var_b = statement_1.rhs.variable.*;
+    const var_b = statement_1.rhs.variable;
     try std.testing.expectEqualStrings(var_b.id, "b");
 }
 
@@ -585,7 +582,7 @@ test "parseProgram - main, if block with statement and else block" {
     // Test else block has no condition
     try std.testing.expect(else_block.condition == null);
 
-    // // Test else block statements
+    // Test else block statements
     try std.testing.expectEqual(1, else_block.statements.items.len);
     const else_block_stmt = else_block.statements.items[0];
     try std.testing.expect(isNum(else_block_stmt));
@@ -745,7 +742,7 @@ test "parseProgram - main, if block with statement, else if block and else block
     const else_if_block_expr_stmt = else_block.condition.?.num;
     try std.testing.expectEqual(1, else_if_block_expr_stmt.value);
 
-    // // Test NO else if block statements
+    // Test NO else if block statements
     try std.testing.expectEqual(0, else_block.statements.items.len);
 
     // Test last else block
@@ -860,4 +857,43 @@ test "continue outside loop raises error" {
 
     const program = parser.parse();
     try std.testing.expectError(ParserError.InvalidLoopStatement, program);
+}
+
+test "return in global scope raises error" {
+    // `return 42 ;`
+    var tokens = [_]Token{
+        Token{ .type = TokenType.return_kw, .lexeme = "return", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = parser.parse();
+    try std.testing.expectError(ParserError.ReturnInGlobalScope, program);
+}
+
+test "return after function decl in global scope raises error" {
+    // `function main() {} return 0 ;`
+    var tokens = [_]Token{
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+
+        Token{ .type = TokenType.return_kw, .lexeme = "return", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "0", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = parser.parse();
+    try std.testing.expectError(ParserError.ReturnInGlobalScope, program);
 }

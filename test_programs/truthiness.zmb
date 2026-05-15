@@ -1,0 +1,14 @@
+function main() {
+    ok = 1;
+
+    if (1)  { } else { ok = 0; }
+    if (0)  { ok = 0; }
+    if (-1) { } else { ok = 0; }
+    if (42) { } else { ok = 0; }
+
+    s = "hi";
+    if (s)  { } else { ok = 0; }
+
+    if (ok) { return 42; }
+    return 0;
+}

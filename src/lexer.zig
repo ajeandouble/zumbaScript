@@ -5,6 +5,7 @@ const TokenType = @import("./tokens.zig").TokenType;
 const reserved = @import("./lex_constants.zig").reserved;
 const op_math = @import("./lex_constants.zig").math;
 const op_cmp = @import("./lex_constants.zig").cmp;
+const op_logical = @import("./lex_constants.zig").logical;
 const op_assign = @import("./lex_constants.zig").assign;
 const delimeters = @import("./lex_constants.zig").delimeters;
 const separators = @import("./lex_constants.zig").separators;
@@ -20,6 +21,7 @@ const reserved_kws = std.StaticStringMap(TokenType).initComptime(.{
     .{ reserved._for, TokenType.for_kw },
     .{ reserved._break, TokenType.break_kw },
     .{ reserved._continue, TokenType.continue_kw },
+    .{ reserved._struct, TokenType.struct_kw },
 });
 
 const single_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
@@ -39,13 +41,20 @@ const single_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
     .{ delimeters.rbrack, TokenType.rbrack },
     .{ separators.comma, TokenType.comma },
     .{ separators.semi, TokenType.semi },
+    .{ separators.dot, TokenType.dot },
+    .{ separators.colon, TokenType.colon },
+    .{ op_logical.not_op, TokenType.not_op },
     .{ "\n", TokenType.eol },
 });
 
 const mult_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
     .{ "==", TokenType.eq },
+    .{ "!=", TokenType.ne },
     .{ "<=", TokenType.le },
     .{ ">=", TokenType.ge },
+    .{ "&&", TokenType.and_op },
+    .{ "||", TokenType.or_op },
+    .{ "..", TokenType.dotdot },
 });
 
 const whitespaces_no_nl = std.StaticStringMap(undefined).initComptime(.{
@@ -63,7 +72,7 @@ pub const Lexer: type = struct {
     tokens: ?std.ArrayList(Token),
 
     pub fn init(buffer: []const u8, allocator: std.mem.Allocator) !Self {
-        const tokens = std.ArrayList(Token).init(allocator);
+        const tokens = std.ArrayList(Token){};
         const lexer = Self{ .allocator = allocator, .source = buffer, .tokens = tokens };
         return lexer;
     }
@@ -73,18 +82,18 @@ pub const Lexer: type = struct {
             tok.deinit();
             tok.lexeme = null;
         }
-        self.tokens.?.deinit();
+        self.tokens.?.deinit(self.allocator);
         self.tokens = null;
     }
 
     pub fn tokenize(self: *Self) !void {
         if (self.tokens) |*tokens| {
             var next_tok = try self.nextToken();
-            try tokens.append(next_tok);
+            try tokens.append(self.allocator, next_tok);
             while (next_tok.type != TokenType.eof) {
                 dbg.print("{}: '{s}' L:{}\n", .{ next_tok.type, next_tok.lexeme.?, next_tok.line }, @src());
                 next_tok = try self.nextToken();
-                try tokens.*.append(next_tok);
+                try tokens.*.append(self.allocator, next_tok);
             }
         } else {
             return Error.NullTokens;
@@ -138,7 +147,12 @@ pub const Lexer: type = struct {
         }
 
         if (std.ascii.isDigit(self.peek(0))) {
-            return try self.num();
+            var j: usize = 1;
+            while (std.ascii.isDigit(self.peek(j))) j += 1;
+            return if (self.peek(j) == '.' and std.ascii.isDigit(self.peek(j + 1)))
+                try self.float()
+            else
+                try self.num();
         }
 
         if (std.ascii.isAlphabetic(self.peek(0))) {
@@ -165,13 +179,16 @@ pub const Lexer: type = struct {
 
     fn num(self: *Self) !Token {
         const start = self.pos;
-        var n: i28 = 0;
-        while (std.ascii.isDigit(self.peek(0))) {
-            n *= 10;
-            n += @intCast(self.peek(0));
-            try self.advance(1);
-        }
+        while (std.ascii.isDigit(self.peek(0))) try self.advance(1);
         return Token.init(TokenType.integer, self.source.?[start..self.pos], self.line, self.allocator);
+    }
+
+    fn float(self: *Self) !Token {
+        const start = self.pos;
+        while (std.ascii.isDigit(self.peek(0))) try self.advance(1);
+        try self.advance(1); // consume '.'
+        while (std.ascii.isDigit(self.peek(0))) try self.advance(1);
+        return Token.init(TokenType.float, self.source.?[start..self.pos], self.line, self.allocator);
     }
 
     fn id(self: *Self) !Token {
@@ -215,6 +232,11 @@ pub const Lexer: type = struct {
                 '\n' => {
                     self.line += 1;
                     try self.advance(1);
+                },
+                '/' => {
+                    if (self.peek(1) == '/') {
+                        while (!self.isAtEnd() and self.peek(0) != '\n') try self.advance(1);
+                    } else break;
                 },
                 else => break,
             }

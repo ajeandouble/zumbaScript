@@ -1,0 +1,11 @@
+// expected exit: 32
+struct Point {
+    x;
+    y;
+}
+
+function main() {
+    p = Point { x: 3, y: 4 };
+    p.x = 10;
+    return p.x + p.y * 3 * 2 -2;
+}

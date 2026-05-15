@@ -1,0 +1,8 @@
+x = 10;
+x = x + 5;
+
+function main() {
+    y = 6 * 7;
+    if (y == 42) { return 42; }
+    return 0;
+}
