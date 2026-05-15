@@ -1,1 +1,8 @@
-a = [];
+function main() {
+    a = [];
+    b = [1, 2, 3];
+    if (b[0] == 1 && b[2] == 3) {
+        return 42;
+    }
+    return 0;
+}

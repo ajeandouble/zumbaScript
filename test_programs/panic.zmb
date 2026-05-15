@@ -1,0 +1,5 @@
+// expected exit: 1 (non-zero), prints "panic: intentional panic" to stderr
+function main() {
+    panic("intentional panic");
+    return 0;
+}

@@ -23,6 +23,7 @@ pub const TokenType = enum {
     rbrace,
     lbrack,
     rbrack,
+    dotdot,
 
     comma,
     semi,
@@ -41,13 +42,25 @@ pub const TokenType = enum {
     le,
     lt,
     eq,
+    ne,
     ge,
     gt,
+
+    // Logical operators
+    and_op,
+    or_op,
+    not_op,
 
     // Value associated token
     string,
     integer,
+    float,
     id,
+
+    // Struct support
+    struct_kw,
+    dot,
+    colon,
 
     // Debug purpose only
     dummy,
@@ -88,9 +101,5 @@ pub const Token = struct {
         } else {
             return self.lexeme.?;
         }
-    }
-
-    pub fn str(self: @This()) []const u8 {
-        return std.fmt.bufPrint("{}:\"{?}\" l{}", .{ self.type, self.lexeme, self.line });
     }
 };

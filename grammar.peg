@@ -1,0 +1,134 @@
+# Zumbascript PEG Grammar
+# Ordered-choice operator: /   (first match wins)
+# Terminals are ALL_CAPS, non-terminals are CamelCase.
+# Implicit whitespace is skipped between every token (handled by lexer).
+
+# ─── Top-level ───────────────────────────────────────────────────────────────
+
+Program          <- GlobalStatement* FunctionDecl+ EOF
+
+GlobalStatement  <- Assignment SEMI
+
+FunctionDecl     <- FUNCTION ID LPAREN FunctionArgs RPAREN CompoundStatement
+
+FunctionArgs     <- FunctionArgsList?
+FunctionArgsList <- ID (COMMA ID)*
+
+# ─── Statements ──────────────────────────────────────────────────────────────
+
+CompoundStatement     <- LBRACE StatementList RBRACE
+StatementList         <- (Statement SEMI)*
+
+LoopCompoundStatement <- LBRACE LoopStatementList RBRACE
+LoopStatementList     <- ((LoopStatement / Statement) SEMI)*
+
+Statement     <- ReturnStatement
+              /  IfBlock
+              /  WhileBlock
+              /  Assignment
+              /  Expr
+
+LoopStatement <- BreakStatement
+              /  ContinueStatement
+
+ReturnStatement  <- RETURN Expr
+BreakStatement   <- BREAK
+ContinueStatement <- CONTINUE
+
+IfBlock   <- IF LPAREN Expr RPAREN CompoundStatement ElseBlock?
+ElseBlock <- ELSE (IfBlock / CompoundStatement)
+
+WhileBlock <- WHILE LPAREN Expr RPAREN LoopCompoundStatement
+
+Assignment <- LValue ASSIGN Expr
+LValue     <- ArraySubscript / ID
+
+# ─── Expressions ─────────────────────────────────────────────────────────────
+
+Expr       <- LogicalOr
+LogicalOr  <- LogicalAnd (OR LogicalAnd)*
+LogicalAnd <- Comparison (AND Comparison)*
+Comparison <- Arithmetic ((LT / LE / EQ / NE / GE / GT) Arithmetic)*
+
+Arithmetic <- Term ((PLUS / MINUS) Term)*
+
+Term       <- Factor ((MUL / DIV / MOD) Factor)*
+
+Factor     <- PLUS Factor
+           /  MINUS Factor
+           /  NOT Factor
+           /  INTEGER
+           /  FLOAT
+           /  LPAREN Expr RPAREN
+           /  FunctionCall
+           /  ArraySubscript
+           /  ArrayLiteral
+           /  STRING
+           /  Variable
+
+FunctionCall  <- ID LPAREN CallArgs RPAREN
+CallArgs      <- CallArgsList?
+CallArgsList  <- Expr (COMMA Expr)*
+
+Variable      <- ID
+
+ArrayLiteral  <- LBRACK ArrayElements RBRACK
+ArrayElements <- (Expr (COMMA Expr)*)?
+
+ArraySubscript <- LValue LBRACK Expr RBRACK        # read: a[i]
+                                                    # write: handled via Assignment lvalue
+
+# Slicing (planned — syntax TBD, candidate: a[lo..hi])
+# ArraySlice <- LValue LBRACK Expr DOTDOT Expr RBRACK
+
+# Struct (planned)
+# StructDecl  <- STRUCT ID LBRACE StructFields RBRACE
+# StructFields <- (ID SEMI)*
+# FieldAccess <- Expr DOT ID
+
+# ─── Terminals ───────────────────────────────────────────────────────────────
+
+ID      <- [a-zA-Z_] [a-zA-Z0-9_]*
+INTEGER <- [0-9]+
+FLOAT   <- [0-9]+ "." [0-9]+
+STRING  <- '"' (!'"' .)* '"'
+
+# Reserved words (must NOT be followed by an ID character)
+FUNCTION <- "function" ![a-zA-Z0-9_]
+RETURN   <- "return"   ![a-zA-Z0-9_]
+IF       <- "if"       ![a-zA-Z0-9_]
+ELSE     <- "else"     ![a-zA-Z0-9_]
+WHILE    <- "while"    ![a-zA-Z0-9_]
+FOR      <- "for"      ![a-zA-Z0-9_]
+BREAK    <- "break"    ![a-zA-Z0-9_]
+CONTINUE <- "continue" ![a-zA-Z0-9_]
+
+# Operators
+PLUS   <- "+"
+MINUS  <- "-"
+MUL    <- "*"
+DIV    <- "/"
+MOD    <- "%"
+LT     <- "<" !"="      # disambiguate from <=
+LE     <- "<="
+EQ     <- "=="
+GE     <- ">="
+GT     <- ">" !"="      # disambiguate from >=
+NE     <- "!="
+ASSIGN <- "=" !"="      # disambiguate from ==
+AND    <- "&&"
+OR     <- "||"
+NOT    <- "!" !"="      # disambiguate from !=
+
+# Delimiters / separators
+LPAREN <- "("
+RPAREN <- ")"
+LBRACE <- "{"
+RBRACE <- "}"
+LBRACK <- "["
+RBRACK <- "]"
+COMMA  <- ","
+SEMI   <- ";"
+# DOTDOT <- ".."         # planned for slicing
+
+EOF    <- !.

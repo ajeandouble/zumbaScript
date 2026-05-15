@@ -7,6 +7,7 @@ pub const reserved = struct {
     pub const _for = "for";
     pub const _break = "break";
     pub const _continue = "continue";
+    pub const _struct = "struct";
 };
 
 pub const math = struct {
@@ -21,8 +22,15 @@ pub const cmp = struct {
     pub const lt = "<";
     pub const le = "<=";
     pub const lq = "==";
+    pub const ne = "!=";
     pub const ge = ">=";
     pub const gt = ">";
+};
+
+pub const logical = struct {
+    pub const and_op = "&&";
+    pub const or_op = "||";
+    pub const not_op = "!";
 };
 
 pub const assign = struct {
@@ -41,4 +49,6 @@ pub const delimeters = struct {
 pub const separators = struct {
     pub const comma = ",";
     pub const semi = ";";
+    pub const dot = ".";
+    pub const colon = ":";
 };

@@ -9,6 +9,11 @@ pub const Num = struct {
     value: i64,
 };
 
+pub const Float = struct {
+    token: Token,
+    value: f64,
+};
+
 pub const Array = struct {
     const Self = @This();
     token: Token,
@@ -21,24 +26,27 @@ pub const String = struct {
 
     pub fn initEmpty(token: Token, allocator: std.mem.Allocator) !String {
         return String{
-            .token = token, // FIXME: since the stirng is mutable it doesn't make sense to save lexeme
+            .token = token,
             .value = try allocator.alloc(u8, 0),
             .allocator = allocator,
         };
     }
 
     pub fn initFromSlice(token: Token, slice: []const u8, allocator: std.mem.Allocator) !String {
-        const buf = try allocator.dupeZ(u8, slice);
+        const buf = try allocator.dupe(u8, slice);
         return String{
-            .token = token, // FIXME: since the stirng is mutable it doesn't make sense to save lexeme
+            .token = token,
             .value = buf,
             .allocator = allocator,
         };
     }
 
-    pub fn append(self: *String, more: []const u8, allocator: std.mem.Allocator) !void {
-        std.mem.concat(allocator, u8, &[_][]const u8{ self.value, more });
-        // NOTE: check for leaks
+    pub fn append(self: *String, more: []const u8) !void {
+        const new_buf = try self.allocator.alloc(u8, self.value.len + more.len);
+        @memcpy(new_buf[0..self.value.len], self.value);
+        @memcpy(new_buf[self.value.len..], more);
+        self.allocator.free(self.value);
+        self.value = new_buf;
     }
 
     pub fn deinit(self: *String) void {
@@ -126,4 +134,36 @@ pub const ContinueStatement = struct {
     token: Token = undefined,
 };
 
-pub const Node = union(enum) { num: Num, array: Array, string: String, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement };
+pub const Subscript = struct {
+    token: Token = undefined,
+    target: *const Node = undefined,
+    index: *const Node = undefined,
+};
+
+pub const Slice = struct {
+    token: Token = undefined,
+    target: *const Node = undefined,
+    lo: *const Node = undefined,
+    hi: *const Node = undefined,
+};
+
+pub const StructDecl = struct {
+    token: Token,
+    id: []const u8,
+    fields: []const []const u8,
+};
+
+pub const StructLiteral = struct {
+    token: Token,
+    struct_id: []const u8,
+    field_names: []const []const u8,
+    field_vals: []const *Node,
+};
+
+pub const FieldAccess = struct {
+    token: Token,
+    target: *const Node,
+    field: []const u8,
+};
+
+pub const Node = union(enum) { num: Num, float: Float, array: Array, string: String, binop: BinOp, unaryop: UnaryOp, variable: Variable, func_call: FunctionCall, func_decl: FunctionDecl, struct_decl: StructDecl, struct_literal: StructLiteral, field_access: FieldAccess, program: Program, ret: ReturnStatement, if_block: IfBlock, else_block: ElseBlock, while_block: WhileBlock, break_stmt: BreakStatement, continue_stmt: ContinueStatement, subscript: Subscript, slice: Slice };

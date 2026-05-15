@@ -1,0 +1,19 @@
+function main() {
+    ok = 1;
+
+    if (1 < 2)  { } else { ok = 0; }
+    if (2 < 1)  { ok = 0; }
+    if (2 <= 2) { } else { ok = 0; }
+    if (3 <= 2) { ok = 0; }
+    if (2 == 2) { } else { ok = 0; }
+    if (2 == 3) { ok = 0; }
+    if (2 != 3) { } else { ok = 0; }
+    if (2 != 2) { ok = 0; }
+    if (3 >= 3) { } else { ok = 0; }
+    if (2 >= 3) { ok = 0; }
+    if (3 > 2)  { } else { ok = 0; }
+    if (2 > 3)  { ok = 0; }
+
+    if (ok) { return 42; }
+    return 0;
+}

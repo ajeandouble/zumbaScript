@@ -1,0 +1,9 @@
+function main() {
+    s = "hello";
+    ok = 1;
+    if (s[0] == "h") { } else { ok = 0; }
+    if (s[1] == "e") { } else { ok = 0; }
+    if (s[4] == "o") { } else { ok = 0; }
+    if (ok) { return 42; }
+    return 0;
+}
