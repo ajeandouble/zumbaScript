@@ -27,7 +27,7 @@ const Token = @import("./tokens.zig").Token;
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
 const MAX_CALL_DEPTH = 1000;
-const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow, IndexOutOfBounds, CallStackOverflow };
+const Error = error{ NotImplemented, InterpreterError, DuplicateFunctionDeclaration, FunctionIsNotDeclared, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression, InvalidElseBlockExpression, InvalidWhileBlockExpression, InvalidContinueStatementExpression, InvalidConditionType, UnexpectedControlFlow, IndexOutOfBounds, CallStackOverflow, DivisionByZero };
 const ControlFlow = enum { Continue, Break, Return };
 const ValueType = enum { integer, float, string, array, object, void };
 const Value = union(enum) { integer: i64, float: f64, string: *String, array: []Value, object: *std.StringHashMap(Value), void: void };
@@ -227,8 +227,8 @@ pub const Interpreter = struct {
                 .plus => .{ .integer = l + r },
                 .minus => .{ .integer = l - r },
                 .mul => .{ .integer = l * r },
-                .div => .{ .integer = @divTrunc(l, r) },
-                .mod => .{ .integer = @mod(l, r) },
+                .div => if (r == 0) return Error.DivisionByZero else .{ .integer = @divTrunc(l, r) },
+                .mod => if (r == 0) return Error.DivisionByZero else .{ .integer = @mod(l, r) },
                 .lt => .{ .integer = @intFromBool(l < r) },
                 .le => .{ .integer = @intFromBool(l <= r) },
                 .eq => .{ .integer = @intFromBool(l == r) },
