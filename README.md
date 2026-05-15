@@ -56,6 +56,10 @@ array_elements:                     empty | expr (COMMA expr)
 array_subscript:                    lvalue LBRACKET expr RBRACKET
 ```
 
+## Learning Resources
+
+<p align="center"><img src="logo/zumbascript_in_action_manning.jpeg" width="60%"></img></p>
+
 ## TODO
 
 - [x] Parser
