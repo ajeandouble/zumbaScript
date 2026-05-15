@@ -7,3 +7,5 @@ zig-out/
 /build-*/
 /docgen_tmp/
 .DS_Store
+CLAUDE.md
+.claude/
